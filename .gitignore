@@ -9,3 +9,6 @@ env/
 # Ignore Python cache
 __pycache__/
 *.pyc
+
+# Ignore Screenshots directory
+ScreenShots/
