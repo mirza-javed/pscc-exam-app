@@ -205,11 +205,27 @@ st.markdown("""
 # --- GOOGLE SHEETS CONNECTION & DATA LOADING ---
 @st.cache_resource
 def connect_to_gsheets():
-    """Authenticates using the secrets.toml file."""
-    creds_dict = st.secrets["gcp_service_account"]
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPE)
-    client = gspread.authorize(creds)
-    return client
+    """Authenticates using the secrets.toml file or Streamlit Cloud Secrets."""
+    if "gcp_service_account" not in st.secrets:
+        st.error("🔑 **GCP Service Account Credentials Missing!**")
+        st.info(
+            "### How to fix this on Streamlit Community Cloud:\n\n"
+            "1. Open your app dashboard at **[share.streamlit.io](https://share.streamlit.io/)**.\n"
+            "2. Click the **`⋮` (Options)** or ⚙️ **Settings** icon next to your app.\n"
+            "3. Click on the **Secrets** tab on the left.\n"
+            "4. Paste your `[gcp_service_account]` section from your local `.streamlit/secrets.toml` file into the editor.\n"
+            "5. Click **Save**. The app will automatically reboot and connect."
+        )
+        st.stop()
+
+    try:
+        creds_dict = st.secrets["gcp_service_account"]
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPE)
+        client = gspread.authorize(creds)
+        return client
+    except Exception as e:
+        st.error(f"❌ **Failed to authenticate with Google Sheets API:** {e}")
+        st.stop()
 
 
 @st.cache_data(ttl=600)  # Refresh cache every 10 minutes
