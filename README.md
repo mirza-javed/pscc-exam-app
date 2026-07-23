@@ -6,13 +6,16 @@ Centralized, role-based Streamlit web application designed for **Pakistan Steel 
 
 ## ✨ Key Features
 
-* 🔐 **Staff Authentication & RBAC:** Secure email authentication against the `Staff_Directory` database. Grants global admin privileges to `In-charge Examination`, `Admin`, and `Principal` staff while strictly scoping subject teachers.
-* 🔒 **Teacher Scoped Views:** Automatically restricts marks entry dropdowns to only show classes, sections, and subjects assigned to the logged-in teacher in `Teaching_Assignments`.
-* ✍️ **Interactive Data Entry Portal (`st.data_editor`):** Bulk enter marks directly into a touch-friendly grid. Features real-time subject/class switching, existing score pre-population, and gspread batch appending.
+* 🔐 **Staff Authentication & Role-Based Access Control (RBAC):** Secure email login matching against `Staff_Directory`.
+  * **Global Access (Admins):** `Principal`, `V. Principal`, `Section_Head`, `Admin_Exam`, and `In-charge Examination` staff.
+  * **Class Teacher Scope:** Full access to assigned class (`Class_Teacher_Of`) and section (`Section_Of`) across **all academic subjects**.
+  * **Subject Teacher Scope:** Restricted to specific assigned subjects, grades, and section flags in `Teaching_Assignments`.
+* ✍️ **Interactive Data Entry & Bulk File Upload Engine:** Enter marks via an interactive `st.data_editor` grid or bulk upload `.csv`, `.xlsx`, or `.xls` files. Features pre-populated CSV template downloads (`Kit_No`, `Name`), automatic student ID matching, and gspread batch appending.
 * 📊 **Global Analytics Dashboard:** Displays overall class average (%), overall pass rate, Top 3 merit rankers, Bottom 3 academic support tracking, Seaborn subject performance graphs, and student-by-subject merit master sheets.
-* 🎯 **Automated Grade Threshold Mapping:** Dynamically computes percentage cutoffs, letter grades (`A+`, `A`, `B`, `C`, `D`, `F`), remarks, and pass/fail statuses mapped directly from the `Grading_System` sheet.
-* 🎓 **Official Cadet Result Cards & Export Engine:**
-  * Official academic evaluation card with cadet demographics, section merit position, subject score breakdown table, and performance comparison graph.
+* 🎯 **Automated Grade Threshold Mapping:** Dynamically computes percentage cutoffs, letter grades (`A++`, `A+`, `A`, `B++`, `B+`, `B`, `C`, `D`, `E`, `U`), remarks, and pass/fail statuses mapped directly from the `Grading_System` sheet.
+* 🎓 **Official Cadet Result Cards & Kit No Filter Engine:**
+  * Official academic evaluation card with cadet demographics (`Kit_No`, `Group`), section merit position, subject score breakdown table, and performance comparison graph.
+  * **Kit No Search Filter:** Quick search and selection of cadets by **Kit No (Student ID)** (`26035 - hashim`).
   * **Excel Export (`.xlsx`):** Download formatted class master sheets and individual cadet cards using `openpyxl`.
   * **Printable HTML / PDF Export:** One-click instant print button (`window.print()`) for saving official PDF result cards.
 * 📱 **Mobile-Friendly Design System:** Powered by Google Fonts (`Inter` & `Outfit`), glassmorphism card containers, high-DPI charts, touch-friendly min-44px targets, and fluid horizontal touch scrolling tables.
@@ -25,12 +28,14 @@ The backend connects to the Google Sheets workbook titled **`PS Cadet College - 
 
 | Tab Name | Description | Key Headers |
 | :--- | :--- | :--- |
-| **`Students`** | Student roster & class info | `Student_ID`, `Name`, `Grade`, `Section`, `Stream` |
-| **`Staff_Directory`** | Registered staff profiles | `Teacher_ID`, `Full_Name`, `Email`, `Role`, `Class_Incharge_Of` |
-| **`Teaching_Assignments`** | Teacher class/subject mapping | `Teacher_ID`, `Subject`, `Assigned_Grade`, `Assigned_Section`, `Teacher_Name` |
-| **`Grading_System`** | Exam terms & percentage thresholds | `Exam_ID`, `Exam_Name`, `Max_Marks`, `Min_Percentage`, `Max_Percentage`, `Grade`, `Remarks` |
-| **`Subjects_Master`** | Academic subject definitions | `Subject_ID`, `Subject_Name`, `Applicable_Grade`, `Applicable_Stream`, `Is_Core_Subject` |
-| **`Marks_Log`** | Transactional evaluation records | `Submission_ID`, `Student_ID`, `Exam_ID`, `Subject`, `Marks_Obtained` |
+| **`Students`** | Student roster & academic group | `Kit_No`, `Name`, `Grade`, `Section`, `Group` |
+| **`Staff_Directory`** | Teaching staff & admin directory | `Teacher_ID`, `Full_Name`, `Email`, `Teaching_Subject`, `Role`, `Class_Teacher_Of`, `Section_Of` |
+| **`Teaching_Assignments`** | Teacher class/subject mapping | `Teacher_ID`, `Subject`, `Assigned_Grade`, `Assigned_Section_A`, `Assigned_Section_B`, `Assigned_Section_C`, `Teacher_Name` |
+| **`Grading_System`** | Percentage thresholds & letter grades | `Grade`, `Min Percentage`, `Max Percentage`, `Remarks` |
+| **`exam_scheme`** | Exam Max Marks definition per subject | `Exam_ID`, `Exam_Name`, `Grade`, `Subject`, `Max_Marks` |
+| **`Marks_Log`** | Transactional evaluation records | `Submission_ID`, `Kit_No`, `Exam_ID`, `Subject`, `Marks_Obtained` |
+| **`Group_Subjects`** | Subject lists mapped by academic group | `Subjects_of_Gen_Group`, `Subjects_of_Bio_Group`, `Subjects_of_CS_Group`, `Subjects_of_PM_Group`, `Subjects_of_PE_Group`, `Subjects_of_GS_Group` |
+| **`Subjects_Master`** *(Optional)* | Legacy subject definitions (Redundant) | `Subject_ID`, `Subject_Name`, `Applicable_Grade`, `Applicable_Stream`, `Is_Core_Subject` |
 
 ---
 

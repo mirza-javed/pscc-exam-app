@@ -230,49 +230,113 @@ def connect_to_gsheets():
 
 @st.cache_data(ttl=600)  # Refresh cache every 10 minutes
 def load_database():
-    """Pulls all 6 tabs into a dictionary of Pandas DataFrames with clean header normalization."""
+    """Pulls all database tabs into a dictionary of Pandas DataFrames with clean header normalization."""
     client = connect_to_gsheets()
     sheet = client.open("PS Cadet College - Master Examination Database")
 
     def fetch_tab(tab_name):
-        data = sheet.worksheet(tab_name).get_all_values()
+        try:
+            data = sheet.worksheet(tab_name).get_all_values()
+            if not data:
+                return pd.DataFrame()
 
-        if not data:
+            headers = [str(h).strip() for h in data[0]]
+            rows = data[1:]
+            df = pd.DataFrame(rows, columns=headers)
+
+            # Clean string values across all cells (trim spaces)
+            for col in df.columns:
+                df[col] = df[col].astype(str).str.strip()
+
+            # Normalize Kit_No vs Student_ID & Group vs Stream for Students
+            if tab_name == "Students":
+                if "Kit_No" in df.columns and "Student_ID" not in df.columns:
+                    df["Student_ID"] = df["Kit_No"]
+                elif "Student_ID" in df.columns and "Kit_No" not in df.columns:
+                    df["Kit_No"] = df["Student_ID"]
+
+                if "Group" in df.columns and "Stream" not in df.columns:
+                    df["Stream"] = df["Group"]
+                elif "Stream" in df.columns and "Group" not in df.columns:
+                    df["Group"] = df["Stream"]
+
+                if "Name" not in df.columns:
+                    for alt in ["Full_Name", "Full Name", "Student_Name", "Student Name"]:
+                        if alt in df.columns:
+                            df["Name"] = df[alt]
+                            break
+
+            # Normalize Kit_No vs Student_ID for Marks_Log
+            if tab_name == "Marks_Log":
+                if "Kit_No" in df.columns and "Student_ID" not in df.columns:
+                    df["Student_ID"] = df["Kit_No"]
+                elif "Student_ID" in df.columns and "Kit_No" not in df.columns:
+                    df["Kit_No"] = df["Student_ID"]
+
+            # Normalize Name and Full_Name for Staff_Directory
+            if tab_name == "Staff_Directory":
+                if "Name" not in df.columns and "Full_Name" in df.columns:
+                    df["Name"] = df["Full_Name"]
+                elif "Full_Name" not in df.columns and "Name" in df.columns:
+                    df["Full_Name"] = df["Name"]
+
+            return df
+        except Exception:
             return pd.DataFrame()
-
-        headers = [str(h).strip() for h in data[0]]
-        rows = data[1:]
-        df = pd.DataFrame(rows, columns=headers)
-
-        # Clean string values across all cells (trim spaces)
-        for col in df.columns:
-            df[col] = df[col].astype(str).str.strip()
-
-        # Normalize Name column for Students
-        if tab_name == "Students" and "Name" not in df.columns:
-            for alt in ["Full_Name", "Full Name", "Student_Name", "Student Name"]:
-                if alt in df.columns:
-                    df["Name"] = df[alt]
-                    break
-
-        # Normalize Name and Full_Name for Staff_Directory
-        if tab_name == "Staff_Directory":
-            if "Name" not in df.columns and "Full_Name" in df.columns:
-                df["Name"] = df["Full_Name"]
-            elif "Full_Name" not in df.columns and "Name" in df.columns:
-                df["Full_Name"] = df["Name"]
-
-        return df
 
     db = {
         "Students": fetch_tab("Students"),
         "Staff_Directory": fetch_tab("Staff_Directory"),
         "Teaching_Assignments": fetch_tab("Teaching_Assignments"),
         "Grading_System": fetch_tab("Grading_System"),
-        "Subjects_Master": fetch_tab("Subjects_Master"),
-        "Marks_Log": fetch_tab("Marks_Log")
+        "exam_scheme": fetch_tab("exam_scheme"),
+        "Marks_Log": fetch_tab("Marks_Log"),
+        "Group_Subjects": fetch_tab("Group_Subjects"),
+        "Subjects_Master": fetch_tab("Subjects_Master")
     }
     return db
+
+
+def get_all_available_subjects(db: dict) -> list:
+    """Collects all unique academic subjects across Group_Subjects, exam_scheme, Subjects_Master, and Teaching_Assignments."""
+    subjects = set()
+
+    # 1. Group_Subjects tab
+    gs_df = db.get("Group_Subjects", pd.DataFrame())
+    if not gs_df.empty:
+        for col in gs_df.columns:
+            for val in gs_df[col].dropna():
+                s = str(val).strip()
+                if s and not s.startswith("Subjects_of_"):
+                    subjects.add(s)
+
+    # 2. exam_scheme tab
+    es_df = db.get("exam_scheme", pd.DataFrame())
+    if not es_df.empty and "Subject" in es_df.columns:
+        for val in es_df["Subject"].dropna():
+            s = str(val).strip()
+            if s:
+                subjects.add(s)
+
+    # 3. Subjects_Master tab
+    sm_df = db.get("Subjects_Master", pd.DataFrame())
+    if not sm_df.empty:
+        col = "Subject_Name" if "Subject_Name" in sm_df.columns else ("Subject" if "Subject" in sm_df.columns else None)
+        if col:
+            for val in sm_df[col].dropna():
+                s = str(val).strip()
+                if s:
+                    subjects.add(s)
+
+    # 4. Teaching_Assignments tab
+    ta_df = db.get("Teaching_Assignments", pd.DataFrame())
+    if not ta_df.empty and "Subject" in ta_df.columns:
+        for val in ta_df["Subject"].dropna():
+            s = str(val).strip()
+            if s:
+                subjects.add(s)
+
+    return sorted(list(subjects)) if subjects else ["English", "Urdu", "Maths", "Physics", "Chemistry", "Islamiat", "Biology", "Computer Science", "Pakistan Studies", "Sindhi", "Manners"]
 
 
 # --- HELPER LOGIC: GRADE THRESHOLD MAPPING ---
@@ -285,40 +349,52 @@ def calculate_grade_info(pct: float, grading_df: pd.DataFrame = None) -> dict:
 
     # Check if threshold columns exist in Grading_System
     if grading_df is not None and not grading_df.empty:
-        if "Min_Percentage" in grading_df.columns and "Max_Percentage" in grading_df.columns:
+        min_col = "Min_Percentage" if "Min_Percentage" in grading_df.columns else ("Min Percentage" if "Min Percentage" in grading_df.columns else None)
+        max_col = "Max_Percentage" if "Max_Percentage" in grading_df.columns else ("Max Percentage" if "Max Percentage" in grading_df.columns else None)
+
+        if min_col and max_col:
             g_df = grading_df.copy()
-            g_df["Min_Pct"] = pd.to_numeric(g_df["Min_Percentage"], errors="coerce")
-            g_df["Max_Pct"] = pd.to_numeric(g_df["Max_Percentage"], errors="coerce")
+            g_df["Min_Pct"] = pd.to_numeric(g_df[min_col].astype(str).str.replace("%", ""), errors="coerce")
+            g_df["Max_Pct"] = pd.to_numeric(g_df[max_col].astype(str).str.replace("%", ""), errors="coerce")
             g_df = g_df.dropna(subset=["Min_Pct", "Max_Pct"])
 
             for _, row in g_df.iterrows():
                 if row["Min_Pct"] <= pct <= row["Max_Pct"]:
                     grade = str(row.get("Grade", "")).strip() or "N/A"
                     remarks = str(row.get("Remarks", "")).strip() or "Satisfactory"
-                    status = "PASS" if grade not in ["F", "Fail", "FAIL"] and pct >= 40 else "FAIL"
+                    status = "PASS" if grade not in ["F", "Fail", "FAIL", "U"] and pct >= 40 else "FAIL"
                     return {"grade": grade, "remarks": remarks, "status": status}
 
     # Standard Fallback Thresholds (PSCC Academic Standard)
-    if pct >= 80:
+    if pct >= 95:
+        return {"grade": "A++", "remarks": "Exceptional", "status": "PASS"}
+    elif pct >= 90:
         return {"grade": "A+", "remarks": "Outstanding", "status": "PASS"}
-    elif pct >= 70:
+    elif pct >= 85:
         return {"grade": "A", "remarks": "Excellent", "status": "PASS"}
+    elif pct >= 80:
+        return {"grade": "B++", "remarks": "Very Good", "status": "PASS"}
+    elif pct >= 75:
+        return {"grade": "B+", "remarks": "Good", "status": "PASS"}
+    elif pct >= 70:
+        return {"grade": "B", "remarks": "Fairly Good", "status": "PASS"}
     elif pct >= 60:
-        return {"grade": "B", "remarks": "Good", "status": "PASS"}
+        return {"grade": "C", "remarks": "Above Average", "status": "PASS"}
     elif pct >= 50:
-        return {"grade": "C", "remarks": "Satisfactory", "status": "PASS"}
+        return {"grade": "D", "remarks": "Average", "status": "PASS"}
     elif pct >= 40:
-        return {"grade": "D", "remarks": "Pass", "status": "PASS"}
+        return {"grade": "E", "remarks": "Below Average", "status": "PASS"}
     else:
-        return {"grade": "F", "remarks": "Needs Improvement", "status": "FAIL"}
+        return {"grade": "U", "remarks": "Fail / Unsatisfactory", "status": "FAIL"}
 
 
 # --- HELPER LOGIC: STAFF ROLE & PERMISSIONS ---
-def get_staff_permissions(user_info: dict, db: dict) -> dict:
+def get_staff_permissions(user_info: dict, db: dict):
     """
-    Evaluates staff role and returns assigned Grades, Sections, and Subjects.
-    In-charge Examination / Admins receive global access.
-    Class & Subject teachers are scoped strictly to their assigned classes.
+    Evaluates permissions for logged-in staff member based on role and assignments:
+    1. Global Access: Principal, V. Principal, Section_Head, Admin_Exam, In-charge_Exam.
+    2. Class_Teacher: Full access to assigned class (Class_Teacher_Of) & section (Section_Of) for ALL subjects.
+    3. Teacher (Subject Teacher): Access restricted to assigned subjects in Teaching_Assignments.
     """
     user_info = user_info or {}
     role = str(user_info.get('Role', '')).strip().lower()
@@ -326,53 +402,101 @@ def get_staff_permissions(user_info: dict, db: dict) -> dict:
     teacher_id = str(user_info.get('Teacher_ID', '')).strip()
 
     admin_keywords = [
-        'in-charge examination', 'examination incharge', 'incharge examination',
-        'admin', 'administrator', 'principal', 'headmaster', 'vice principal'
+        'principal', 'v. principal', 'v_principal', 'vice principal',
+        'section_head', 'section head', 'admin_exam', 'admin exam',
+        'in-charge_exam', 'in-charge examination', 'examination incharge',
+        'incharge examination', 'in-charge exam', 'admin', 'administrator'
     ]
     is_admin = any(k in role or k in responsibility for k in admin_keywords)
 
+    if is_admin:
+        return {
+            "is_admin": True,
+            "is_class_teacher": False,
+            "assigned_grades": [],
+            "assigned_sections": {},
+            "assigned_subjects": {}
+        }
+
+    assigned_grades_set = set()
+    assigned_sections_map = {}   # grade -> set of sections
+    assigned_subjects_map = {}   # (grade, section) -> set of subjects
+    class_teacher_scopes = set() # (grade, section) where user is class teacher
+
+    # Check Class_Teacher_Of & Section_Of in user_info or Staff_Directory
+    class_teacher_of = str(user_info.get("Class_Teacher_Of", user_info.get("Class_Incharge_Of", ""))).strip()
+    section_of = str(user_info.get("Section_Of", "")).strip()
+
+    if (class_teacher_of and class_teacher_of.lower() not in ["none", "", "nan"] and
+        section_of and section_of.lower() not in ["none", "", "nan"]):
+        c_grade = class_teacher_of
+        c_sec = section_of
+        assigned_grades_set.add(c_grade)
+        assigned_sections_map.setdefault(c_grade, set()).add(c_sec)
+        class_teacher_scopes.add((c_grade, c_sec))
+
+    # Parse Teaching_Assignments tab
     assignments_df = db.get("Teaching_Assignments", pd.DataFrame())
+    if not assignments_df.empty and teacher_id:
+        user_assignments = assignments_df[assignments_df["Teacher_ID"].astype(str).str.strip() == teacher_id].copy()
 
-    if is_admin or assignments_df.empty or not teacher_id:
-        return {
-            "is_admin": is_admin,
-            "assigned_grades": [],
-            "assigned_sections": {},
-            "assigned_subjects": {}
-        }
+        grade_col = "Assigned_Grade" if "Assigned_Grade" in user_assignments.columns else "Grade"
+        subject_col = "Subject" if "Subject" in user_assignments.columns else "Subject_Name"
 
-    # Filter assignments for the logged-in teacher
-    user_assignments = assignments_df[assignments_df["Teacher_ID"].astype(str).str.strip() == teacher_id].copy()
+        section_flag_cols = [
+            col for col in user_assignments.columns
+            if col.startswith("Assigned_Section_") or (col.startswith("Section_") and col != "Section_Name")
+        ]
 
-    if user_assignments.empty:
-        return {
-            "is_admin": False,
-            "assigned_grades": [],
-            "assigned_sections": {},
-            "assigned_subjects": {}
-        }
+        truthy_values = {"1", "true", "yes", "y", "t"}
 
-    grade_col = "Assigned_Grade" if "Assigned_Grade" in user_assignments.columns else "Grade"
-    section_col = "Assigned_Section" if "Assigned_Section" in user_assignments.columns else "Section"
-    subject_col = "Subject" if "Subject" in user_assignments.columns else "Subject_Name"
+        if section_flag_cols:
+            for _, row in user_assignments.iterrows():
+                grade = str(row.get(grade_col, "")).strip()
+                subject = str(row.get(subject_col, "")).strip()
+                if not grade or not subject:
+                    continue
 
-    for col in [grade_col, section_col, subject_col]:
-        if col in user_assignments.columns:
-            user_assignments[col] = user_assignments[col].astype(str).str.strip()
+                for flag_col in section_flag_cols:
+                    val = str(row.get(flag_col, "")).strip().lower()
+                    if val in truthy_values:
+                        if flag_col.startswith("Assigned_Section_"):
+                            sec_name = flag_col[len("Assigned_Section_"):].strip()
+                        else:
+                            sec_name = flag_col[len("Section_"):].strip()
 
-    assigned_grades = sorted(user_assignments[grade_col].dropna().unique().tolist())
-    assigned_sections = {}
-    assigned_subjects = {}
+                        if sec_name:
+                            assigned_grades_set.add(grade)
+                            assigned_sections_map.setdefault(grade, set()).add(sec_name)
+                            assigned_subjects_map.setdefault((grade, sec_name), set()).add(subject)
+        else:
+            section_col = "Assigned_Section" if "Assigned_Section" in user_assignments.columns else "Section"
+            for _, row in user_assignments.iterrows():
+                grade = str(row.get(grade_col, "")).strip()
+                section = str(row.get(section_col, "")).strip()
+                subject = str(row.get(subject_col, "")).strip()
+                if grade and section and subject:
+                    assigned_grades_set.add(grade)
+                    assigned_sections_map.setdefault(grade, set()).add(section)
+                    assigned_subjects_map.setdefault((grade, section), set()).add(subject)
 
-    for grade in assigned_grades:
-        g_df = user_assignments[user_assignments[grade_col] == grade]
-        assigned_sections[grade] = sorted(g_df[section_col].dropna().unique().tolist())
-        for section in assigned_sections[grade]:
-            s_df = g_df[g_df[section_col] == section]
-            assigned_subjects[(grade, section)] = sorted(s_df[subject_col].dropna().unique().tolist())
+    # Class Teachers get FULL access to ALL subjects for their assigned class & section
+    all_subjects_list = get_all_available_subjects(db)
+    for (c_grade, c_sec) in class_teacher_scopes:
+        assigned_subjects_map[(c_grade, c_sec)] = set(all_subjects_list)
+
+    def sort_key(val):
+        val_str = str(val)
+        return (0, int(val_str)) if val_str.isdigit() else (1, val_str)
+
+    assigned_grades = sorted(list(assigned_grades_set), key=sort_key)
+    assigned_sections = {g: sorted(list(secs)) for g, secs in assigned_sections_map.items()}
+    assigned_subjects = {k: sorted(list(subs)) for k, subs in assigned_subjects_map.items()}
 
     return {
         "is_admin": False,
+        "is_class_teacher": len(class_teacher_scopes) > 0,
+        "class_teacher_scopes": class_teacher_scopes,
         "assigned_grades": assigned_grades,
         "assigned_sections": assigned_sections,
         "assigned_subjects": assigned_subjects
@@ -448,26 +572,77 @@ def login_screen(db):
                         st.warning("⚠️ Please enter your registered email address.")
 
 
+# --- HELPER LOGIC: SAFE MERGE ENGINE ---
+def merge_marks_and_students(marks_df: pd.DataFrame, students_df: pd.DataFrame) -> pd.DataFrame:
+    """Safely merges marks_df with students_df without producing duplicate _x and _y column suffix conflicts."""
+    if marks_df.empty or students_df.empty:
+        return pd.DataFrame()
+
+    m_df = marks_df.copy()
+    s_df = students_df.copy()
+
+    # Determine join key
+    if "Kit_No" in m_df.columns and "Kit_No" in s_df.columns:
+        join_col = "Kit_No"
+    elif "Student_ID" in m_df.columns and "Student_ID" in s_df.columns:
+        join_col = "Student_ID"
+    elif "Kit_No" in s_df.columns and "Student_ID" in m_df.columns:
+        m_df["Kit_No"] = m_df["Student_ID"]
+        join_col = "Kit_No"
+    elif "Student_ID" in s_df.columns and "Kit_No" in m_df.columns:
+        m_df["Student_ID"] = m_df["Kit_No"]
+        join_col = "Student_ID"
+    else:
+        return pd.DataFrame()
+
+    # Remove secondary ID/Group columns from m_df if present in s_df to avoid _x / _y renaming conflicts
+    for col in ["Student_ID", "Kit_No", "Group", "Stream"]:
+        if col != join_col and col in s_df.columns and col in m_df.columns:
+            m_df = m_df.drop(columns=[col])
+
+    merged = pd.merge(m_df, s_df, on=join_col, how="inner")
+
+    # Ensure both Kit_No and Student_ID exist cleanly in merged dataframe
+    if "Kit_No" not in merged.columns and "Student_ID" in merged.columns:
+        merged["Kit_No"] = merged["Student_ID"]
+    if "Student_ID" not in merged.columns and "Kit_No" in merged.columns:
+        merged["Student_ID"] = merged["Kit_No"]
+
+    return merged
+
+
 # --- DATABASE MARKS SUBMISSION ---
 def save_marks_to_gsheets(edited_df: pd.DataFrame, exam_name: str, subject: str, db: dict) -> int:
     """Formats edited dataframe and appends valid records to Google Sheets Marks_Log."""
     client = connect_to_gsheets()
     sheet = client.open("PS Cadet College - Master Examination Database").worksheet("Marks_Log")
 
-    # Match Exam_ID
-    grading_df = db["Grading_System"]
-    exam_match = grading_df.loc[grading_df["Exam_Name"] == exam_name, "Exam_ID"]
-    exam_id = exam_match.values[0] if not exam_match.empty else exam_name
+    # Match Exam_ID from exam_scheme or Grading_System
+    exam_scheme = db.get("exam_scheme", pd.DataFrame())
+    grading_df = db.get("Grading_System", pd.DataFrame())
+
+    exam_id = exam_name
+    if not exam_scheme.empty and "Exam_Name" in exam_scheme.columns and "Exam_ID" in exam_scheme.columns:
+        match = exam_scheme.loc[exam_scheme["Exam_Name"] == exam_name, "Exam_ID"]
+        if not match.empty:
+            exam_id = match.values[0]
+    elif not grading_df.empty and "Exam_Name" in grading_df.columns and "Exam_ID" in grading_df.columns:
+        match = grading_df.loc[grading_df["Exam_Name"] == exam_name, "Exam_ID"]
+        if not match.empty:
+            exam_id = match.values[0]
 
     records_to_add = []
     assert isinstance(edited_df, pd.DataFrame)
+    id_col = "Kit_No" if "Kit_No" in edited_df.columns else "Student_ID"
+
     for _, row in edited_df.iterrows():
         marks_val = str(row['Marks_Obtained']).strip()
         if marks_val != "" and pd.notna(row['Marks_Obtained']):
             submission_id = str(uuid.uuid4())[:8]
+            student_code = str(row[id_col]).strip()
             records_to_add.append([
                 submission_id,
-                str(row['Student_ID']).strip(),
+                student_code,
                 str(exam_id).strip(),
                 str(subject).strip(),
                 marks_val
@@ -537,7 +712,7 @@ def main_dashboard(db):
             students_df = db["Students"].copy()
 
             # Merge marks with student profile info
-            merged_df = pd.merge(marks_df, students_df, on="Student_ID", how="inner")
+            merged_df = merge_marks_and_students(marks_df, students_df)
 
             with st.container(border=True):
                 st.markdown("#### 🎯 Filter Results by Class & Exam")
@@ -740,9 +915,18 @@ def main_dashboard(db):
                 c1, c2 = st.columns(2)
 
                 with c1:
-                    exam_opts = db["Grading_System"]["Exam_Name"].dropna().unique().tolist()
-                    sel_exam = st.selectbox("Select Examination", exam_opts, key="entry_exam")
+                    exam_scheme = db.get("exam_scheme", pd.DataFrame())
+                    grading_df = db.get("Grading_System", pd.DataFrame())
 
+                    exam_opts = []
+                    if not exam_scheme.empty and "Exam_Name" in exam_scheme.columns:
+                        exam_opts = sorted(exam_scheme["Exam_Name"].dropna().unique().tolist())
+                    elif not grading_df.empty and "Exam_Name" in grading_df.columns:
+                        exam_opts = sorted(grading_df["Exam_Name"].dropna().unique().tolist())
+                    if not exam_opts:
+                        exam_opts = ["Monthly_Aug", "First_Term"]
+
+                    sel_exam = st.selectbox("Select Examination", exam_opts, key="entry_exam")
                     sel_grade = st.selectbox("Select Grade", avail_grades, key="entry_grade")
 
                 with c2:
@@ -753,19 +937,21 @@ def main_dashboard(db):
 
                     sel_section = st.selectbox("Select Section", sec_opts if sec_opts else ["A"], key="entry_section")
 
+                    all_subjects = get_all_available_subjects(db)
                     if is_admin:
-                        subj_opts = db["Subjects_Master"]["Subject_Name"].dropna().unique().tolist()
+                        subj_opts = all_subjects
                     else:
-                        subj_opts = assigned_subjects.get((sel_grade, sel_section), db["Subjects_Master"]["Subject_Name"].dropna().unique().tolist())
+                        subj_opts = assigned_subjects.get((sel_grade, sel_section), all_subjects)
 
                     sel_subject = st.selectbox("Select Subject", subj_opts if subj_opts else ["General"], key="entry_subject")
 
             st.divider()
 
+            id_display_col = "Kit_No" if "Kit_No" in db["Students"].columns else "Student_ID"
             students_filtered = db["Students"][
                 (db["Students"]["Grade"] == sel_grade) &
                 (db["Students"]["Section"] == sel_section)
-            ][["Student_ID", "Name"]].copy()
+            ][[id_display_col, "Name"]].copy()
 
             if students_filtered.empty:
                 st.warning("⚠️ No students registered in the selected Grade & Section.")
@@ -777,23 +963,89 @@ def main_dashboard(db):
                     # Check if existing marks already logged for this exam & subject to prefill grid
                     marks_log = db.get("Marks_Log", pd.DataFrame())
                     existing_map = {}
-                    if not marks_log.empty and "Student_ID" in marks_log.columns and "Subject" in marks_log.columns:
-                        grading_df = db.get("Grading_System", pd.DataFrame())
-                        exam_match = grading_df.loc[grading_df["Exam_Name"] == sel_exam, "Exam_ID"] if not grading_df.empty else pd.Series()
-                        exam_id = exam_match.values[0] if not exam_match.empty else sel_exam
+                    if not marks_log.empty and "Subject" in marks_log.columns:
+                        exam_id = sel_exam
+                        if not exam_scheme.empty and "Exam_Name" in exam_scheme.columns and "Exam_ID" in exam_scheme.columns:
+                            e_match = exam_scheme.loc[exam_scheme["Exam_Name"] == sel_exam, "Exam_ID"]
+                            if not e_match.empty:
+                                exam_id = e_match.values[0]
+                        elif not grading_df.empty and "Exam_Name" in grading_df.columns and "Exam_ID" in grading_df.columns:
+                            e_match = grading_df.loc[grading_df["Exam_Name"] == sel_exam, "Exam_ID"]
+                            if not e_match.empty:
+                                exam_id = e_match.values[0]
+
+                        log_id_col = "Kit_No" if "Kit_No" in marks_log.columns else "Student_ID"
 
                         filtered_log = marks_log[
                             (marks_log["Subject"] == sel_subject) &
                             ((marks_log["Exam_ID"] == exam_id) | (marks_log["Exam_ID"] == sel_exam))
                         ]
-                        existing_map = dict(zip(filtered_log["Student_ID"].astype(str).str.strip(), filtered_log["Marks_Obtained"]))
+                        existing_map = dict(zip(filtered_log[log_id_col].astype(str).str.strip(), filtered_log["Marks_Obtained"]))
 
-                    students_filtered["Marks_Obtained"] = students_filtered["Student_ID"].astype(str).str.strip().map(existing_map).fillna("")
+                    students_filtered["Marks_Obtained"] = students_filtered[id_display_col].astype(str).str.strip().map(existing_map).fillna("")
+
+                    # --- BULK FILE UPLOADER (CSV / EXCEL) BLOCK ---
+                    with st.expander("📤 **Bulk Upload Marks via File (CSV / Excel)**", expanded=False):
+                        st.markdown("""
+                        Upload a **CSV** or **Excel (.xlsx / .xls)** file containing cadet examination marks to auto-fill the grid.
+                        - **Supported ID Columns:** `Kit_No`, `Student_ID`, `Roll_No`, `Cadet_ID`
+                        - **Supported Marks Columns:** `Marks_Obtained`, `Marks`, `Score`, `Obtained`
+                        """)
+                        u_col1, u_col2 = st.columns([2, 1])
+
+                        with u_col2:
+                            # Template CSV Download Button
+                            tmpl_df = students_filtered.copy()
+                            tmpl_csv = tmpl_df[[id_display_col, "Name", "Marks_Obtained"]].to_csv(index=False).encode('utf-8')
+                            st.download_button(
+                                label="📥 Download Template (CSV)",
+                                data=tmpl_csv,
+                                file_name=f"PSCC_Template_Grade_{sel_grade}_{sel_section}_{sel_subject}.csv",
+                                mime="text/csv",
+                                use_container_width=True
+                            )
+
+                        with u_col1:
+                            uploaded_file = st.file_uploader(
+                                "Select CSV or Excel File",
+                                type=["csv", "xlsx", "xls"],
+                                key=f"bulk_upload_{sel_grade}_{sel_section}_{sel_subject}_{sel_exam}"
+                            )
+
+                        if uploaded_file is not None:
+                            try:
+                                if uploaded_file.name.endswith('.csv'):
+                                    file_df = pd.read_csv(uploaded_file)
+                                else:
+                                    file_df = pd.read_excel(uploaded_file)
+
+                                file_df.columns = [str(c).strip() for c in file_df.columns]
+
+                                # Resolve ID & Marks Columns
+                                f_id_col = next((c for c in [id_display_col, "Kit_No", "Student_ID", "Roll_No", "Cadet_ID", "ID"] if c in file_df.columns), None)
+                                f_marks_col = next((c for c in ["Marks_Obtained", "Marks", "Score", "Obtained", "Mark"] if c in file_df.columns), None)
+
+                                if f_id_col and f_marks_col:
+                                    upload_map = dict(zip(file_df[f_id_col].astype(str).str.strip(), file_df[f_marks_col].astype(str).str.strip()))
+                                    mapped_count = 0
+                                    for idx, row in students_filtered.iterrows():
+                                        s_id = str(row[id_display_col]).strip()
+                                        if s_id in upload_map and upload_map[s_id] != "":
+                                            students_filtered.at[idx, "Marks_Obtained"] = upload_map[s_id]
+                                            mapped_count += 1
+
+                                    st.success(f"✅ Successfully matched and auto-filled **{mapped_count}** cadet scores from `{uploaded_file.name}`! Review and save below.")
+                                else:
+                                    st.error(f"❌ Uploaded file must contain student ID (`Kit_No` or `Student_ID`) and marks (`Marks_Obtained` or `Marks`) headers.")
+                            except Exception as ex:
+                                st.error(f"❌ Error reading uploaded file: {ex}")
+
+                    st.divider()
 
                     # Data Editor Grid tied to selected subject & grade key
                     edited_marks = st.data_editor(
                         students_filtered,
-                        disabled=["Student_ID", "Name"],
+                        disabled=[id_display_col, "Name"],
                         hide_index=True,
                         use_container_width=True,
                         key=f"marks_editor_grid_{sel_grade}_{sel_section}_{sel_subject}_{sel_exam}"
@@ -832,7 +1084,7 @@ def main_dashboard(db):
                 marks_df["Marks_Obtained"] = pd.to_numeric(marks_df["Marks_Obtained"], errors="coerce")
                 students_df = db["Students"].copy()
 
-                report_df = pd.merge(marks_df, students_df, on="Student_ID", how="inner")
+                report_df = merge_marks_and_students(marks_df, students_df)
 
                 with st.container(border=True):
                     rc1, rc2 = st.columns(2)
@@ -855,8 +1107,9 @@ def main_dashboard(db):
 
                 with st.container(border=True):
                     st.markdown(f"**Total Transaction Records:** `{len(filt_report)}`")
+                    disp_id_col = "Kit_No" if "Kit_No" in filt_report.columns else "Student_ID"
                     st.dataframe(
-                        filt_report[["Student_ID", "Name", "Grade", "Section", "Subject", "Marks_Obtained"]],
+                        filt_report[[disp_id_col, "Name", "Grade", "Section", "Subject", "Marks_Obtained"]],
                         use_container_width=True,
                         height=280
                     )
@@ -892,7 +1145,7 @@ def main_dashboard(db):
                 marks_df = db["Marks_Log"].copy()
                 marks_df["Marks_Obtained"] = pd.to_numeric(marks_df["Marks_Obtained"], errors="coerce")
                 students_df = db["Students"].copy()
-                merged_full = pd.merge(marks_df, students_df, on="Student_ID", how="inner")
+                merged_full = merge_marks_and_students(marks_df, students_df)
 
                 with st.container(border=True):
                     c_g, c_s, c_std, c_ex = st.columns(4)
@@ -907,41 +1160,67 @@ def main_dashboard(db):
 
                     with c_std:
                         cadet_df = students_df[(students_df["Grade"] == card_grade) & (students_df["Section"] == card_section)]
-                        cadet_list = cadet_df["Name"].tolist() if not cadet_df.empty else []
-                        card_student_name = st.selectbox("Select Cadet", cadet_list if cadet_list else ["No Students"])
+                        id_col_name = "Kit_No" if "Kit_No" in cadet_df.columns else "Student_ID"
+                        if not cadet_df.empty:
+                            cadet_options = [f"{row[id_col_name]} - {row['Name']}" for _, row in cadet_df.iterrows()]
+                            kit_map = {f"{row[id_col_name]} - {row['Name']}": row[id_col_name] for _, row in cadet_df.iterrows()}
+                        else:
+                            cadet_options = ["No Cadets"]
+                            kit_map = {}
+
+                        selected_kit_option = st.selectbox("Kit No (Student ID)", cadet_options, key="card_kit_no")
 
                     with c_ex:
+                        exam_scheme = db.get("exam_scheme", pd.DataFrame())
                         grading_df = db.get("Grading_System", pd.DataFrame())
+
                         ex_list = ["All Exams"]
-                        if not grading_df.empty and "Exam_Name" in grading_df.columns:
+                        if not exam_scheme.empty and "Exam_Name" in exam_scheme.columns:
+                            ex_list += sorted(exam_scheme["Exam_Name"].dropna().unique().tolist())
+                        elif not grading_df.empty and "Exam_Name" in grading_df.columns:
                             ex_list += sorted(grading_df["Exam_Name"].dropna().unique().tolist())
                         card_exam = st.selectbox("Exam Term", ex_list, key="card_ex")
 
-                if card_student_name and card_student_name != "No Students":
-                    selected_student = cadet_df[cadet_df["Name"] == card_student_name].iloc[0]
-                    student_id = selected_student["Student_ID"]
+                if selected_kit_option and selected_kit_option != "No Cadets":
+                    student_id = kit_map[selected_kit_option]
+                    selected_student = cadet_df[cadet_df[id_col_name] == student_id].iloc[0]
+                    card_student_name = selected_student["Name"]
+                    student_group = selected_student.get("Group", selected_student.get("Stream", "General"))
 
                     # Filter student marks
-                    s_marks = merged_full[merged_full["Student_ID"] == student_id].copy()
-                    if card_exam != "All Exams" and not grading_df.empty:
-                        exam_ids = grading_df.loc[grading_df["Exam_Name"] == card_exam, "Exam_ID"].tolist()
+                    s_marks = merged_full[
+                        (merged_full["Student_ID"] == student_id) | (merged_full["Kit_No"] == student_id)
+                    ].copy()
+                    if card_exam != "All Exams":
+                        exam_ids = []
+                        if not exam_scheme.empty and "Exam_Name" in exam_scheme.columns:
+                            exam_ids = exam_scheme.loc[exam_scheme["Exam_Name"] == card_exam, "Exam_ID"].tolist()
+                        elif not grading_df.empty and "Exam_Name" in grading_df.columns:
+                            exam_ids = grading_df.loc[grading_df["Exam_Name"] == card_exam, "Exam_ID"].tolist()
+
                         s_marks = s_marks[(s_marks["Exam_ID"].isin(exam_ids)) | (s_marks["Exam_ID"] == card_exam)]
 
                     if s_marks.empty:
                         st.warning(f"⚠️ No recorded marks found for Cadet **{card_student_name}** under **{card_exam}**.")
                     else:
-                        # Calculate Max Marks mapping
-                        exam_max_map = {}
-                        if not grading_df.empty:
-                            max_col = next((c for c in ["Max_Marks", "Total_Marks", "Full_Marks"] if c in grading_df.columns), None)
-                            if max_col:
-                                for _, r in grading_df.iterrows():
-                                    exam_max_map[str(r.get("Exam_ID", "")).strip()] = pd.to_numeric(r[max_col], errors="coerce")
-                                    exam_max_map[str(r.get("Exam_Name", "")).strip()] = pd.to_numeric(r[max_col], errors="coerce")
+                        # Calculate Max Marks mapping from exam_scheme or fallback
+                        def calc_max(row):
+                            ex_name = str(row.get("Exam_ID", "")).strip()
+                            subj = str(row.get("Subject", "")).strip()
+                            # Check exam_scheme
+                            if not exam_scheme.empty and "Max_Marks" in exam_scheme.columns:
+                                match = exam_scheme[
+                                    ((exam_scheme["Exam_ID"].astype(str).str.strip() == ex_name) | (exam_scheme["Exam_Name"].astype(str).str.strip() == card_exam)) &
+                                    (exam_scheme["Subject"].astype(str).str.strip() == subj)
+                                ]
+                                if not match.empty:
+                                    val = pd.to_numeric(match["Max_Marks"].iloc[0], errors="coerce")
+                                    if pd.notna(val) and val > 0:
+                                        return float(val)
 
-                        s_marks["Max_Marks"] = s_marks["Exam_ID"].astype(str).str.strip().map(exam_max_map)
-                        s_marks["Max_Marks"] = pd.to_numeric(s_marks["Max_Marks"], errors="coerce").fillna(100.0)
+                            return 100.0
 
+                        s_marks["Max_Marks"] = s_marks.apply(calc_max, axis=1)
                         s_marks["Percentage"] = (s_marks["Marks_Obtained"] / s_marks["Max_Marks"] * 100.0).round(2)
                         s_marks["Grade"] = s_marks["Percentage"].apply(lambda p: calculate_grade_info(p, grading_df)["grade"])
                         s_marks["Remarks"] = s_marks["Percentage"].apply(lambda p: calculate_grade_info(p, grading_df)["remarks"])
@@ -952,11 +1231,12 @@ def main_dashboard(db):
                         overall_info = calculate_grade_info(overall_pct, grading_df)
 
                         # Compute Rank in Section
+                        student_id_col = "Kit_No" if "Kit_No" in merged_full.columns else "Student_ID"
                         sec_totals = merged_full[
                             (merged_full["Grade"] == card_grade) & (merged_full["Section"] == card_section)
-                        ].groupby("Student_ID")["Marks_Obtained"].sum().reset_index()
+                        ].groupby(student_id_col)["Marks_Obtained"].sum().reset_index()
                         sec_totals["Rank"] = sec_totals["Marks_Obtained"].rank(ascending=False, method="min").astype(int)
-                        cadet_rank_row = sec_totals[sec_totals["Student_ID"] == student_id]
+                        cadet_rank_row = sec_totals[sec_totals[student_id_col] == student_id]
                         cadet_rank = cadet_rank_row["Rank"].values[0] if not cadet_rank_row.empty else "N/A"
 
                         st.divider()
@@ -973,13 +1253,13 @@ def main_dashboard(db):
                             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; background: #f8fafc; padding: 1.25rem; border-radius: 10px; border: 1px solid #e2e8f0; margin-bottom: 1.5rem;">
                                 <div>
                                     <p style="margin: 0.25rem 0;"><strong>Cadet Name:</strong> {card_student_name}</p>
-                                    <p style="margin: 0.25rem 0;"><strong>Roll / Cadet ID:</strong> {student_id}</p>
-                                    <p style="margin: 0.25rem 0;"><strong>Stream:</strong> {selected_student.get('Stream', 'General')}</p>
+                                    <p style="margin: 0.25rem 0;"><strong>Kit / Cadet No:</strong> {student_id}</p>
+                                    <p style="margin: 0.25rem 0;"><strong>Academic Group:</strong> {student_group}</p>
                                 </div>
                                 <div>
                                     <p style="margin: 0.25rem 0;"><strong>Grade & Section:</strong> Grade {card_grade} - {card_section}</p>
                                     <p style="margin: 0.25rem 0;"><strong>Merit Position (Section):</strong> #{cadet_rank} out of {len(sec_totals)} Cadets</p>
-                                    <p style="margin: 0.25rem 0;"><strong>Evaluation Date:</strong> 2026-07-22</p>
+                                    <p style="margin: 0.25rem 0;"><strong>Evaluation Date:</strong> 2026-07-23</p>
                                 </div>
                             </div>
                             """)

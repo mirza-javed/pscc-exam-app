@@ -22,12 +22,14 @@
 
 The master workbook titled **`PS Cadet College - Master Examination Database`** consists of 6 relational tabs:
 
-1. **`Students`**: `Student_ID`, `Name`, `Grade`, `Section`, `Stream`
-2. **`Staff_Directory`**: `Teacher_ID`, `Full_Name`, `Email`, `Role`, `Class_Incharge_Of`
-3. **`Teaching_Assignments`**: `Teacher_ID`, `Subject`, `Assigned_Grade`, `Assigned_Section`, `Teacher_Name`
-4. **`Grading_System`**: `Exam_ID`, `Exam_Name`, `Max_Marks`, `Min_Percentage`, `Max_Percentage`, `Grade`, `Remarks`
-5. **`Subjects_Master`**: `Subject_ID`, `Subject_Name`, `Applicable_Grade`, `Applicable_Stream`, `Is_Core_Subject`
-6. **`Marks_Log`**: `Submission_ID`, `Student_ID`, `Exam_ID`, `Subject`, `Marks_Obtained`
+1. **`Students`**: `Kit_No`, `Name`, `Grade`, `Section`, `Group`
+2. **`Staff_Directory`**: `Teacher_ID`, `Full_Name`, `Email`, `Teaching_Subject`, `Role`, `Class_Teacher_Of`, `Section_Of`
+3. **`Teaching_Assignments`**: `Teacher_ID`, `Subject`, `Assigned_Grade`, `Assigned_Section_A`, `Assigned_Section_B`, `Assigned_Section_C`, `Teacher_Name`
+4. **`Grading_System`**: `Grade`, `Min Percentage`, `Max Percentage`, `Remarks`
+5. **`exam_scheme`**: `Exam_ID`, `Exam_Name`, `Grade`, `Subject`, `Max_Marks`
+6. **`Marks_Log`**: `Submission_ID`, `Kit_No`, `Exam_ID`, `Subject`, `Marks_Obtained`
+7. **`Group_Subjects`**: `Subjects_of_Gen_Group`, `Subjects_of_Bio_Group`, `Subjects_of_CS_Group`, `Subjects_of_PM_Group`, `Subjects_of_PE_Group`, `Subjects_of_GS_Group`
+8. **`Subjects_Master`** *(Optional / Redundant)*: `Subject_ID`, `Subject_Name`, `Applicable_Grade`, `Applicable_Stream`, `Is_Core_Subject`
 
 ---
 
