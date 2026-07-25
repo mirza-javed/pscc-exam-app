@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from src.database.models import get_all_available_subjects
+from src.database.models import get_all_available_subjects, get_subjects_for_grade, filter_students_by_subject_group
 from src.utils.exports import save_marks_to_gsheets
 
 def render(db, perm):
@@ -53,11 +53,12 @@ def render(db, perm):
 
                 sel_section = st.selectbox("Select Section", sec_opts if sec_opts else ["A"], key="entry_section")
 
-                all_subjects = get_all_available_subjects(db)
+                grade_subjects = get_subjects_for_grade(db, sel_grade)
                 if is_admin:
-                    subj_opts = all_subjects
+                    subj_opts = grade_subjects
                 else:
-                    subj_opts = assigned_subjects.get((sel_grade, sel_section), all_subjects)
+                    assigned = assigned_subjects.get((sel_grade, sel_section), [])
+                    subj_opts = sorted(set(grade_subjects) & set(assigned)) if assigned else grade_subjects
 
                 sel_subject = st.selectbox("Select Subject", subj_opts if subj_opts else ["General"], key="entry_subject")
 
@@ -67,7 +68,9 @@ def render(db, perm):
         students_filtered = db["Students"][
             (db["Students"]["Grade"] == sel_grade) &
             (db["Students"]["Section"] == sel_section)
-        ][[id_display_col, "Name"]].copy()
+        ][[id_display_col, "Name", "Group"]].copy()
+        students_filtered = filter_students_by_subject_group(students_filtered, sel_grade, sel_subject)
+        students_filtered = students_filtered[[id_display_col, "Name"]].copy()
 
         if students_filtered.empty:
             st.markdown("""
@@ -82,6 +85,11 @@ def render(db, perm):
             with st.container(border=True):
                 st.markdown(f"#### Enter Marks for **Grade {sel_grade}-{sel_section}** (`{sel_subject}`)")
                 st.caption(f"Total Enrolled Cadets: {len(students_filtered)}")
+                st.info(
+                    "Enter numeric marks for present cadets. "
+                    "Type **`AB`** or **`Absent`** for cadets who were absent. "
+                    "Leave blank to skip (no record saved)."
+                )
 
                 marks_log = db.get("Marks_Log", pd.DataFrame())
                 existing_map = {}
@@ -105,6 +113,7 @@ def render(db, perm):
                     existing_map = dict(zip(filtered_log[log_id_col].astype(str).str.strip(), filtered_log["Marks_Obtained"]))
 
                 students_filtered["Marks_Obtained"] = students_filtered[id_display_col].astype(str).str.strip().map(existing_map).fillna("")
+                students_filtered["Marks_Obtained"] = students_filtered["Marks_Obtained"].astype(str).replace("nan", "")
 
                 with st.expander("📤 **Bulk Upload Marks via File (CSV / Excel)**", expanded=False):
                     st.markdown("""

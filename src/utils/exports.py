@@ -58,18 +58,32 @@ def save_marks_to_gsheets(edited_df: pd.DataFrame, exam_name: str, subject: str,
     assert isinstance(edited_df, pd.DataFrame)
     id_col = "Kit_No" if "Kit_No" in edited_df.columns else "Student_ID"
 
+    absent_keywords = {"ab", "a", "absent", "a/b", "n/a", "na", "-"}
+
     for _, row in edited_df.iterrows():
-        marks_val = str(row['Marks_Obtained']).strip()
-        if marks_val != "" and pd.notna(row['Marks_Obtained']):
-            submission_id = str(uuid.uuid4())[:8]
-            student_code = str(row[id_col]).strip()
-            records_to_add.append([
-                submission_id,
-                student_code,
-                str(exam_id).strip(),
-                str(subject).strip(),
-                marks_val
-            ])
+        raw = row['Marks_Obtained']
+        marks_val = str(raw).strip().lower()
+        if marks_val == "" or marks_val == "nan" or pd.isna(raw):
+            continue
+
+        if marks_val in absent_keywords:
+            canonical = "Absent"
+        else:
+            try:
+                float(marks_val)
+                canonical = str(raw).strip()
+            except ValueError:
+                canonical = "Absent"
+
+        submission_id = str(uuid.uuid4())[:8]
+        student_code = str(row[id_col]).strip()
+        records_to_add.append([
+            submission_id,
+            student_code,
+            str(exam_id).strip(),
+            str(subject).strip(),
+            canonical
+        ])
 
     if records_to_add:
         sheet.append_rows(records_to_add)

@@ -92,6 +92,11 @@ def render(db, perm):
                 """, unsafe_allow_html=True)
         else:
             marks_df = db["Marks_Log"].copy()
+            absent_kw = {"absent", "ab", "a", "a/b", "n/a", "na", "-"}
+            marks_df["Is_Absent"] = (
+                pd.to_numeric(marks_df["Marks_Obtained"], errors="coerce").isna() &
+                marks_df["Marks_Obtained"].astype(str).str.strip().str.lower().isin(absent_kw)
+            )
             marks_df["Marks_Obtained"] = pd.to_numeric(marks_df["Marks_Obtained"], errors="coerce")
             students_df = db["Students"].copy()
             merged_full = merge_marks_and_students(marks_df, students_df)
@@ -151,13 +156,17 @@ def render(db, perm):
                 if s_marks.empty:
                     st.warning(f"⚠️ No recorded marks found for Cadet **{card_student_name}** under **{card_exam}**.")
                 else:
+                    grade_exam_scheme = exam_scheme[
+                        exam_scheme["Grade"].astype(str).str.strip() == str(card_grade).strip()
+                    ] if "Grade" in exam_scheme.columns else exam_scheme
+
                     def calc_max(row):
                         ex_name = str(row.get("Exam_ID", "")).strip()
                         subj = str(row.get("Subject", "")).strip()
-                        if not exam_scheme.empty and "Max_Marks" in exam_scheme.columns:
-                            match = exam_scheme[
-                                ((exam_scheme["Exam_ID"].astype(str).str.strip() == ex_name) | (exam_scheme["Exam_Name"].astype(str).str.strip() == card_exam)) &
-                                (exam_scheme["Subject"].astype(str).str.strip() == subj)
+                        if not grade_exam_scheme.empty and "Max_Marks" in grade_exam_scheme.columns:
+                            match = grade_exam_scheme[
+                                ((grade_exam_scheme["Exam_ID"].astype(str).str.strip() == ex_name) | (grade_exam_scheme["Exam_Name"].astype(str).str.strip() == card_exam)) &
+                                (grade_exam_scheme["Subject"].astype(str).str.strip() == subj)
                             ]
                             if not match.empty:
                                 val = pd.to_numeric(match["Max_Marks"].iloc[0], errors="coerce")
@@ -167,18 +176,34 @@ def render(db, perm):
                         return 100.0
 
                     s_marks["Max_Marks"] = s_marks.apply(calc_max, axis=1)
-                    s_marks["Percentage"] = (s_marks["Marks_Obtained"] / s_marks["Max_Marks"] * 100.0).round(2)
-                    s_marks["Grade"] = s_marks["Percentage"].apply(lambda p: calculate_grade_info(p, grading_df)["grade"])
-                    s_marks["Remarks"] = s_marks["Percentage"].apply(lambda p: calculate_grade_info(p, grading_df)["remarks"])
+                    absent_mask = s_marks["Is_Absent"] == True if "Is_Absent" in s_marks.columns else pd.Series(False, index=s_marks.index)
+                    present_marks = s_marks[~absent_mask].copy()
+                    total_absences = int(absent_mask.sum())
 
-                    total_obt = s_marks["Marks_Obtained"].sum()
-                    total_max = s_marks["Max_Marks"].sum()
+                    present_marks["Percentage"] = (present_marks["Marks_Obtained"] / present_marks["Max_Marks"] * 100.0).round(2)
+                    present_marks["Grade"] = present_marks["Percentage"].apply(lambda p: calculate_grade_info(p, grading_df)["grade"])
+                    present_marks["Remarks"] = present_marks["Percentage"].apply(lambda p: calculate_grade_info(p, grading_df)["remarks"])
+
+                    s_marks["Percentage"] = float("nan")
+                    s_marks["Grade"] = ""
+                    s_marks["Remarks"] = ""
+                    s_marks.loc[~absent_mask, "Percentage"] = present_marks["Percentage"].values
+                    s_marks.loc[~absent_mask, "Grade"] = present_marks["Grade"].values
+                    s_marks.loc[~absent_mask, "Remarks"] = present_marks["Remarks"].values
+                    s_marks.loc[absent_mask, "Grade"] = "—"
+                    s_marks.loc[absent_mask, "Remarks"] = "Absent"
+
+                    total_obt = present_marks["Marks_Obtained"].sum()
+                    total_max = present_marks["Max_Marks"].sum()
                     overall_pct = (total_obt / total_max * 100.0) if total_max > 0 else 0.0
                     overall_info = calculate_grade_info(overall_pct, grading_df)
 
                     student_id_col = "Kit_No" if "Kit_No" in merged_full.columns else "Student_ID"
-                    sec_totals = merged_full[
-                        (merged_full["Grade"] == card_grade) & (merged_full["Section"] == card_section)
+                    sec_non_absent = merged_full[
+                        ~(merged_full["Is_Absent"] == True)
+                    ] if "Is_Absent" in merged_full.columns else merged_full
+                    sec_totals = sec_non_absent[
+                        (sec_non_absent["Grade"] == card_grade) & (sec_non_absent["Section"] == card_section)
                     ].groupby(student_id_col)["Marks_Obtained"].sum().reset_index()
                     sec_totals["Rank"] = sec_totals["Marks_Obtained"].rank(ascending=False, method="min").astype(int)
                     cadet_rank_row = sec_totals[sec_totals[student_id_col] == student_id]
@@ -215,9 +240,29 @@ def render(db, perm):
                         sum3.metric("Final Grade", overall_info["grade"])
                         sum4.metric("Academic Status", overall_info["status"])
 
+                        if total_absences > 0:
+                            st.warning(f"⚠️ Cadet was absent in **{total_absences}** subject(s). Absent subjects are excluded from totals.")
+
                         st.markdown("##### 📝 Subject Score Breakdown")
+                        display_marks = s_marks.copy()
+                        if "Is_Absent" in display_marks.columns:
+                            display_marks["Marks_Obtained"] = display_marks.apply(
+                                lambda r: "Absent" if r["Is_Absent"] else (
+                                    f"{r['Marks_Obtained']:.1f}" if pd.notna(r["Marks_Obtained"]) else ""
+                                ), axis=1
+                            )
+                            display_marks["Max_Marks"] = display_marks.apply(
+                                lambda r: "—" if r["Is_Absent"] else (
+                                    f"{r['Max_Marks']:.0f}" if pd.notna(r["Max_Marks"]) else ""
+                                ), axis=1
+                            )
+                            display_marks["Percentage"] = display_marks.apply(
+                                lambda r: "—" if r["Is_Absent"] else (
+                                    f"{r['Percentage']:.2f}%" if pd.notna(r.get("Percentage")) else ""
+                                ), axis=1
+                            )
                         st.dataframe(
-                            s_marks[["Subject", "Marks_Obtained", "Max_Marks", "Percentage", "Grade", "Remarks"]],
+                            display_marks[["Subject", "Marks_Obtained", "Max_Marks", "Percentage", "Grade", "Remarks"]],
                             use_container_width=True,
                             hide_index=True
                         )
@@ -227,7 +272,8 @@ def render(db, perm):
                             (merged_full["Grade"] == card_grade) & (merged_full["Section"] == card_section)
                         ].groupby("Subject")["Marks_Obtained"].mean().reset_index()
 
-                        comp_df = pd.merge(s_marks[["Subject", "Marks_Obtained"]], class_subj_avg, on="Subject", suffixes=("_Cadet", "_Class_Avg"))
+                        comp_source = present_marks[["Subject", "Marks_Obtained"]] if total_absences > 0 else s_marks[["Subject", "Marks_Obtained"]]
+                        comp_df = pd.merge(comp_source, class_subj_avg, on="Subject", suffixes=("_Cadet", "_Class_Avg"))
 
                         is_dark = st.session_state.theme == 'dark'
                         chart_bg = '#1e293b' if is_dark else '#ffffff'
@@ -269,8 +315,10 @@ def render(db, perm):
 
                     exp1, exp2 = st.columns(2)
                     with exp1:
+                        excel_export_df = display_marks[["Subject", "Marks_Obtained", "Max_Marks", "Percentage", "Grade", "Remarks"]].copy()
+                        excel_export_df["Marks_Obtained"] = excel_export_df["Marks_Obtained"].replace("Absent", "Absent")
                         cadet_excel = generate_excel_report(
-                            s_marks[["Subject", "Marks_Obtained", "Max_Marks", "Percentage", "Grade", "Remarks"]],
+                            excel_export_df,
                             sheet_name=f"Report_{student_id}"
                         )
                         st.download_button(
@@ -308,8 +356,19 @@ def render(db, perm):
                             </div>
                             <table>
                                 <tr><th>Subject</th><th>Marks</th><th>Max</th><th>Percentage</th><th>Grade</th><th>Remarks</th></tr>
-                                {"".join([f"<tr><td>{r['Subject']}</td><td>{r['Marks_Obtained']}</td><td>{r['Max_Marks']}</td><td>{r['Percentage']}%</td><td>{r['Grade']}</td><td>{r['Remarks']}</td></tr>" for _, r in s_marks.iterrows()])}
+                                {"".join([
+                                    (
+                                        f"<tr style='background:#fef2f2;'><td>{r['Subject']}</td><td><strong>Absent</strong></td><td>—</td><td>—</td><td>—</td><td>Absent</td></tr>"
+                                        if ("Is_Absent" in s_marks.columns and r.get("Is_Absent", False))
+                                        else (
+                                            f"<tr><td>{r['Subject']}</td><td>{r['Marks_Obtained']}</td><td>{r['Max_Marks']}</td><td>{r['Percentage']}%</td><td>{r['Grade']}</td><td>{r['Remarks']}</td></tr>"
+                                            if pd.notna(r.get("Marks_Obtained")) else
+                                            f"<tr><td>{r['Subject']}</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>"
+                                        )
+                                    ) for _, r in s_marks.iterrows()
+                                ])}
                             </table>
+                            {"<p style='color:#dc2626;'><strong>⚠️ Absent:</strong> " + str(total_absences) + " subject(s)</p>" if total_absences > 0 else ""}
                             <br><br>
                             <button onclick="window.print()" style="padding:12px 24px; background:#1e3a8a; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:bold;">🖨️ Print / Save as PDF</button>
                         </body>

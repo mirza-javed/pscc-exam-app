@@ -19,6 +19,11 @@ def render(db, perm):
         """, unsafe_allow_html=True)
     else:
         marks_df = db["Marks_Log"].copy()
+        absent_keywords = {"absent", "ab", "a", "a/b", "n/a", "na", "-"}
+        marks_df["Is_Absent"] = (
+            pd.to_numeric(marks_df["Marks_Obtained"], errors="coerce").isna() &
+            marks_df["Marks_Obtained"].astype(str).str.strip().str.lower().isin(absent_keywords)
+        )
         marks_df["Marks_Obtained"] = pd.to_numeric(marks_df["Marks_Obtained"], errors="coerce")
         students_df = db["Students"].copy()
 
@@ -38,15 +43,23 @@ def render(db, perm):
 
             with f_col3:
                 grading_df = db.get("Grading_System", pd.DataFrame())
+                exam_scheme_dd = db.get("exam_scheme", pd.DataFrame())
                 exam_options = ["All Exams"]
-                if not grading_df.empty and "Exam_Name" in grading_df.columns:
+                if not exam_scheme_dd.empty and "Exam_Name" in exam_scheme_dd.columns:
+                    exam_options += sorted(exam_scheme_dd["Exam_Name"].dropna().unique().tolist())
+                elif not grading_df.empty and "Exam_Name" in grading_df.columns:
                     exam_options += sorted(grading_df["Exam_Name"].dropna().unique().tolist())
                 dash_exam = st.selectbox("Select Examination", exam_options, key="dash_exam")
 
         section_data = merged_df[(merged_df["Grade"] == dash_grade) & (merged_df["Section"] == dash_section)].copy()
 
-        if dash_exam != "All Exams" and not grading_df.empty:
-            exam_ids = grading_df.loc[grading_df["Exam_Name"] == dash_exam, "Exam_ID"].tolist()
+        if dash_exam != "All Exams":
+            exam_scheme_filt = db.get("exam_scheme", pd.DataFrame())
+            exam_ids = []
+            if not exam_scheme_filt.empty and "Exam_Name" in exam_scheme_filt.columns:
+                exam_ids = exam_scheme_filt.loc[exam_scheme_filt["Exam_Name"] == dash_exam, "Exam_ID"].tolist()
+            elif not grading_df.empty and "Exam_Name" in grading_df.columns:
+                exam_ids = grading_df.loc[grading_df["Exam_Name"] == dash_exam, "Exam_ID"].tolist()
             section_data = section_data[
                 (section_data["Exam_ID"].isin(exam_ids)) | (section_data["Exam_ID"] == dash_exam)
             ]
@@ -61,26 +74,51 @@ def render(db, perm):
             </div>
             """, unsafe_allow_html=True)
         else:
-            exam_max_map = {}
-            if not grading_df.empty:
-                max_col = next((c for c in ["Max_Marks", "Total_Marks", "Full_Marks"] if c in grading_df.columns), None)
-                if max_col:
-                    if "Exam_ID" in grading_df.columns:
-                        for _, r in grading_df.iterrows():
-                            exam_max_map[str(r["Exam_ID"]).strip()] = pd.to_numeric(r[max_col], errors="coerce")
-                    if "Exam_Name" in grading_df.columns:
-                        for _, r in grading_df.iterrows():
-                            exam_max_map[str(r["Exam_Name"]).strip()] = pd.to_numeric(r[max_col], errors="coerce")
+            exam_scheme_df = db.get("exam_scheme", pd.DataFrame())
+            section_data["Max_Marks"] = 100.0
 
-            if "Exam_ID" in section_data.columns and exam_max_map:
-                section_data["Max_Marks"] = section_data["Exam_ID"].astype(str).str.strip().map(exam_max_map)
-            elif "Exam_Name" in section_data.columns and exam_max_map:
-                section_data["Max_Marks"] = section_data["Exam_Name"].astype(str).str.strip().map(exam_max_map)
-            else:
-                section_data["Max_Marks"] = None
+            if not exam_scheme_df.empty and "Max_Marks" in exam_scheme_df.columns:
+                grade_filtered = exam_scheme_df[
+                    exam_scheme_df["Grade"].astype(str).str.strip() == str(dash_grade).strip()
+                ] if "Grade" in exam_scheme_df.columns else exam_scheme_df
+
+                if not grade_filtered.empty:
+                    max_map = {}
+                    for _, r in grade_filtered.iterrows():
+                        max_val = pd.to_numeric(r["Max_Marks"], errors="coerce")
+                        if pd.notna(max_val) and max_val > 0:
+                            subj = str(r.get("Subject", "")).strip()
+                            if "Exam_ID" in grade_filtered.columns:
+                                key = (str(r.get("Exam_ID", "")).strip(), subj)
+                                max_map[key] = float(max_val)
+                            if "Exam_Name" in grade_filtered.columns:
+                                key = (str(r.get("Exam_Name", "")).strip(), subj)
+                                max_map[key] = float(max_val)
+
+                    if max_map:
+                        def lookup_max(row):
+                            ex_id = str(row.get("Exam_ID", "")).strip()
+                            ex_name = str(row.get("Exam_Name", "")).strip() if "Exam_Name" in section_data.columns else ""
+                            subj = str(row.get("Subject", "")).strip()
+                            key_id = (ex_id, subj)
+                            key_name = (ex_name, subj)
+                            if key_id in max_map:
+                                return max_map[key_id]
+                            if ex_name and key_name in max_map:
+                                return max_map[key_name]
+                            return 100.0
+
+                        section_data["Max_Marks"] = section_data.apply(lookup_max, axis=1)
 
             section_data["Max_Marks"] = pd.to_numeric(section_data["Max_Marks"], errors="coerce").fillna(100.0)
             section_data["Max_Marks"] = section_data["Max_Marks"].replace(0, 100.0)
+
+            if "Student_ID" not in section_data.columns:
+                if "Kit_No" in section_data.columns:
+                    section_data["Student_ID"] = section_data["Kit_No"]
+                else:
+                    st.error("Missing Student_ID column in merged data.")
+                    st.stop()
 
             valid_data = section_data[section_data["Marks_Obtained"].notna()].copy()
 
@@ -93,6 +131,12 @@ def render(db, perm):
                 Total_Obtained=('Marks_Obtained', 'sum'),
                 Total_Max=('Max_Marks', 'sum')
             ).reset_index()
+
+            if "Is_Absent" in section_data.columns:
+                absent_per_student = section_data[section_data["Is_Absent"] == True].groupby('Student_ID').size()
+                student_totals["Absences"] = student_totals["Student_ID"].map(absent_per_student).fillna(0).astype(int)
+            else:
+                student_totals["Absences"] = 0
             student_totals["Percentage"] = (student_totals["Total_Obtained"] / student_totals["Total_Max"] * 100.0).round(2)
             student_totals["Rank"] = student_totals["Percentage"].rank(ascending=False, method="min").astype(int)
             student_totals = student_totals.sort_values(by="Rank")
@@ -100,11 +144,16 @@ def render(db, perm):
             pass_count = sum(student_totals["Percentage"] >= 40)
             pass_rate = (pass_count / len(student_totals) * 100.0) if len(student_totals) > 0 else 0.0
 
+            total_absences = student_totals["Absences"].sum()
+
             m1, m2, m3, m4 = st.columns(4)
             m1.metric("Total Cadets Assessed", f"{len(student_totals)} Cadets")
             m2.metric("Class Average Marks (%)", f"{overall_avg_pct:.2f}%")
             m3.metric("Class Letter Grade", grade_info["grade"], delta=grade_info["remarks"])
-            m4.metric("Class Pass Rate", f"{pass_rate:.1f}%")
+            m4.metric("Total Absences Recorded", f"{total_absences}")
+
+            if total_absences > 0:
+                st.warning(f"⚠️ **{total_absences} absence(s)** recorded across {len(student_totals[student_totals['Absences'] > 0])} cadet(s). Absent subjects are excluded from percentage calculations.")
 
             st.divider()
 
@@ -114,8 +163,11 @@ def render(db, perm):
                     st.markdown("#### 🏆 Top 3 Merit Rankers")
                     top_3 = student_totals.head(3).copy()
                     top_3["Grade"] = top_3["Percentage"].apply(lambda p: calculate_grade_info(p, grading_df)["grade"])
+                    display_cols = ["Rank", "Student_ID", "Name", "Total_Obtained", "Percentage", "Grade"]
+                    if top_3["Absences"].sum() > 0:
+                        display_cols.insert(5, "Absences")
                     st.dataframe(
-                        top_3[["Rank", "Student_ID", "Name", "Total_Obtained", "Percentage", "Grade"]],
+                        top_3[display_cols],
                         use_container_width=True,
                         hide_index=True
                     )
@@ -125,8 +177,11 @@ def render(db, perm):
                     st.markdown("#### ⚠️ Academic Support Needed (Bottom 3)")
                     bottom_3 = student_totals.tail(3).sort_values(by="Rank", ascending=False).copy()
                     bottom_3["Grade"] = bottom_3["Percentage"].apply(lambda p: calculate_grade_info(p, grading_df)["grade"])
+                    display_cols_b = ["Rank", "Student_ID", "Name", "Total_Obtained", "Percentage", "Grade"]
+                    if bottom_3["Absences"].sum() > 0:
+                        display_cols_b.insert(5, "Absences")
                     st.dataframe(
-                        bottom_3[["Rank", "Student_ID", "Name", "Total_Obtained", "Percentage", "Grade"]],
+                        bottom_3[display_cols_b],
                         use_container_width=True,
                         hide_index=True
                     )
@@ -224,12 +279,15 @@ def render(db, perm):
                 subject_cols = [c for c in pivot_table.columns if c not in ["Student_ID", "Name"]]
                 pivot_table["Total Score"] = pivot_table[subject_cols].sum(axis=1)
 
-                pivot_table = pd.merge(pivot_table, student_totals[["Student_ID", "Total_Max", "Percentage", "Rank"]], on="Student_ID")
+                merge_cols = [c for c in ["Student_ID", "Total_Max", "Percentage", "Rank", "Absences"] if c in student_totals.columns]
+                pivot_table = pd.merge(pivot_table, student_totals[merge_cols], on="Student_ID")
                 pivot_table["Overall Grade"] = pivot_table["Percentage"].apply(lambda p: calculate_grade_info(p, grading_df)["grade"])
                 pivot_table["Status"] = pivot_table["Percentage"].apply(lambda p: calculate_grade_info(p, grading_df)["status"])
 
                 pivot_table = pivot_table.sort_values(by="Rank").reset_index(drop=True)
 
                 display_cols = ["Rank", "Student_ID", "Name"] + subject_cols + ["Total Score", "Total_Max", "Percentage", "Overall Grade", "Status"]
+                if pivot_table["Absences"].sum() > 0:
+                    display_cols.insert(7, "Absences")
                 st.dataframe(pivot_table[display_cols], use_container_width=True, hide_index=True)
                 plt.close('all')

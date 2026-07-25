@@ -62,5 +62,6 @@ try:
 except Exception as e:
     st.error("\u26A0 **Application Error**")
     with st.expander("\U0001F50D Technical Details (for IT Support)"):
-        st.code(str(e))
+        import traceback
+        st.code(traceback.format_exc())
     st.info("\U0001F4A1 Try refreshing the page or contact your system administrator.")
