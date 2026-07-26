@@ -180,16 +180,19 @@ def render(db, perm):
                     present_marks = s_marks[~absent_mask].copy()
                     total_absences = int(absent_mask.sum())
 
-                    present_marks["Percentage"] = (present_marks["Marks_Obtained"] / present_marks["Max_Marks"] * 100.0).round(2)
-                    present_marks["Grade"] = present_marks["Percentage"].apply(lambda p: calculate_grade_info(p, grading_df)["grade"])
-                    present_marks["Remarks"] = present_marks["Percentage"].apply(lambda p: calculate_grade_info(p, grading_df)["remarks"])
-
                     s_marks["Percentage"] = float("nan")
                     s_marks["Grade"] = ""
                     s_marks["Remarks"] = ""
-                    s_marks.loc[~absent_mask, "Percentage"] = present_marks["Percentage"].values
-                    s_marks.loc[~absent_mask, "Grade"] = present_marks["Grade"].values
-                    s_marks.loc[~absent_mask, "Remarks"] = present_marks["Remarks"].values
+
+                    s_marks.loc[~absent_mask, "Percentage"] = (
+                        s_marks.loc[~absent_mask, "Marks_Obtained"] / s_marks.loc[~absent_mask, "Max_Marks"] * 100.0
+                    ).round(2)
+                    s_marks.loc[~absent_mask, "Grade"] = s_marks.loc[~absent_mask, "Percentage"].apply(
+                        lambda p: calculate_grade_info(p, grading_df)["grade"]
+                    )
+                    s_marks.loc[~absent_mask, "Remarks"] = s_marks.loc[~absent_mask, "Percentage"].apply(
+                        lambda p: calculate_grade_info(p, grading_df)["remarks"]
+                    )
                     s_marks.loc[absent_mask, "Grade"] = "—"
                     s_marks.loc[absent_mask, "Remarks"] = "Absent"
 
