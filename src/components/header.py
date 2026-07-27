@@ -11,7 +11,7 @@ def render_hero_header(user_name, user_role):
             <div class="crest"><img src="{LOGO_DATA_URI}" alt="Pakistan Steel Cadet College crest"></div>
             <div class="hero-text">
                 <div class="hero-eyebrow">Pakistan Steel Cadet College &middot; Karachi</div>
-                <h1>Examination Portal</h1>
+                <h1 style="color:#ffffff !important;">Examination Portal</h1>
                 <div class="hero-meta">
                     <span class="dot"></span>
                     Signed in as&nbsp;<strong>{user_name}</strong>&nbsp;&middot;&nbsp;{user_role}

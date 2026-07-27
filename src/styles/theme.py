@@ -510,7 +510,8 @@ def inject_theme_css():
         text-transform: uppercase; color: var(--accent-gold) !important;
         margin-bottom: 0.15rem;
     }}
-    .hero-header h1 {{ line-height: 1.1; }}
+    .hero-header h1,
+    .hero-header .hero-text h1 {{ line-height: 1.1; color: #ffffff !important; }}
     .hero-meta {{
         margin-top: 0.65rem; display: inline-flex; align-items: center; gap: 0.45rem;
         background: rgba(255,255,255,0.12); padding: 0.35rem 0.85rem;
