@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from src.database.models import merge_marks_and_students
 from src.utils.grading import calculate_grade_info
 from src.utils.exports import generate_excel_report
+from src.styles.logo import LOGO_DATA_URI
 
 def render(db, perm):
     st.subheader("📋 Examination Reports & Cadet Result Cards")
@@ -217,6 +218,7 @@ def render(db, perm):
                     with st.container(border=True):
                         header_html = textwrap.dedent(f"""
                         <div style="text-align: center; border-bottom: 2px solid #1e3a8a; padding-bottom: 1rem; margin-bottom: 1.5rem;">
+                            <img src="{LOGO_DATA_URI}" alt="Pakistan Steel Cadet College crest" style="height: 84px; width: 84px; object-fit: contain; margin-bottom: 0.5rem;" />
                             <h2 style="color: #1e3a8a; margin: 0; font-size: 1.8rem; font-family: 'Outfit', sans-serif;">PAKISTAN STEEL CADET COLLEGE</h2>
                             <h4 style="color: #475569; margin: 0.3rem 0; font-weight: 500;">OFFICIAL ACADEMIC EVALUATION & RESULT CARD</h4>
                             <p style="color: #64748b; margin: 0; font-size: 0.9rem;"><strong>Examination Term:</strong> {card_exam} | <strong>Academic Year:</strong> 2026</p>
@@ -238,7 +240,7 @@ def render(db, perm):
                         st.markdown(header_html, unsafe_allow_html=True)
 
                         sum1, sum2, sum3, sum4 = st.columns(4)
-                        sum1.metric("Total Marks Obtained", f"{total_obt} / {total_max}")
+                        sum1.metric("Total Marks Obtained", f"{total_obt:.0f} / {total_max:.0f}")
                         sum2.metric("Aggregate Percentage", f"{overall_pct:.2f}%")
                         sum3.metric("Final Grade", overall_info["grade"])
                         sum4.metric("Academic Status", overall_info["status"])
@@ -251,7 +253,7 @@ def render(db, perm):
                         if "Is_Absent" in display_marks.columns:
                             display_marks["Marks_Obtained"] = display_marks.apply(
                                 lambda r: "Absent" if r["Is_Absent"] else (
-                                    f"{r['Marks_Obtained']:.1f}" if pd.notna(r["Marks_Obtained"]) else ""
+                                    f"{r['Marks_Obtained']:.0f}" if pd.notna(r["Marks_Obtained"]) else ""
                                 ), axis=1
                             )
                             display_marks["Max_Marks"] = display_marks.apply(
@@ -341,6 +343,7 @@ def render(db, perm):
                             <style>
                                 body {{ font-family: 'Inter', Arial, sans-serif; padding: 20px; color: #0f172a; }}
                                 .header {{ text-align: center; border-bottom: 2px solid #1e3a8a; padding-bottom: 10px; }}
+                                .header img {{ height: 90px; width: 90px; object-fit: contain; margin-bottom: 8px; }}
                                 .info {{ margin: 20px 0; background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; }}
                                 table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
                                 th, td {{ border: 1px solid #cbd5e1; padding: 10px; text-align: left; }}
@@ -349,13 +352,14 @@ def render(db, perm):
                         </head>
                         <body>
                             <div class="header">
+                                <img src="{LOGO_DATA_URI}" alt="Pakistan Steel Cadet College crest" />
                                 <h2 style="color: #1e3a8a;">PAKISTAN STEEL CADET COLLEGE</h2>
                                 <h3>OFFICIAL RESULT CARD - {card_exam}</h3>
                             </div>
                             <div class="info">
                                 <p><strong>Cadet Name:</strong> {card_student_name} | <strong>ID:</strong> {student_id}</p>
                                 <p><strong>Grade & Section:</strong> {card_grade}-{card_section} | <strong>Position:</strong> #{cadet_rank}</p>
-                                <p><strong>Total Score:</strong> {total_obt}/{total_max} ({overall_pct:.2f}%) | <strong>Grade:</strong> {overall_info['grade']}</p>
+                                <p><strong>Total Score:</strong> {total_obt:.0f}/{total_max:.0f} ({overall_pct:.2f}%) | <strong>Grade:</strong> {overall_info['grade']}</p>
                             </div>
                             <table>
                                 <tr><th>Subject</th><th>Marks</th><th>Max</th><th>Percentage</th><th>Grade</th><th>Remarks</th></tr>
@@ -364,7 +368,7 @@ def render(db, perm):
                                         f"<tr style='background:#fef2f2;'><td>{r['Subject']}</td><td><strong>Absent</strong></td><td>—</td><td>—</td><td>—</td><td>Absent</td></tr>"
                                         if ("Is_Absent" in s_marks.columns and r.get("Is_Absent", False))
                                         else (
-                                            f"<tr><td>{r['Subject']}</td><td>{r['Marks_Obtained']}</td><td>{r['Max_Marks']}</td><td>{r['Percentage']}%</td><td>{r['Grade']}</td><td>{r['Remarks']}</td></tr>"
+                                            f"<tr><td>{r['Subject']}</td><td>{r['Marks_Obtained']:.0f}</td><td>{r['Max_Marks']:.0f}</td><td>{r['Percentage']}%</td><td>{r['Grade']}</td><td>{r['Remarks']}</td></tr>"
                                             if pd.notna(r.get("Marks_Obtained")) else
                                             f"<tr><td>{r['Subject']}</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>"
                                         )
