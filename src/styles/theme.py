@@ -512,6 +512,15 @@ def inject_theme_css():
     }}
     .hero-header h1,
     .hero-header .hero-text h1 {{ line-height: 1.1; color: #ffffff !important; }}
+    .hero-title {{
+        font-family: 'Outfit', 'Inter', sans-serif;
+        font-weight: 800;
+        font-size: clamp(1.35rem, 4vw, 2.2rem);
+        line-height: 1.1;
+        letter-spacing: -0.02em;
+        color: #ffffff !important;
+        margin: 0.1rem 0 0;
+    }}
     .hero-meta {{
         margin-top: 0.65rem; display: inline-flex; align-items: center; gap: 0.45rem;
         background: rgba(255,255,255,0.12); padding: 0.35rem 0.85rem;
