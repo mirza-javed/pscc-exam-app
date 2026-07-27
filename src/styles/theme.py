@@ -14,8 +14,9 @@ def inject_theme_css():
         text_primary = "#f1f5f9"
         text_secondary = "#cbd5e1"
         text_muted = "#94a3b8"
-        accent_blue = "#60a5fa"
-        gradient_hero = "linear-gradient(135deg, #1e293b 0%, #334155 40%, #475569 100%)"
+        accent_blue = "#7cb0ff"
+        accent_gold = "#e5c15a"
+        gradient_hero = "linear-gradient(120deg, #0b1f3a 0%, #12294a 60%, #1c3766 100%)"
         shadow_sm = "0 4px 12px rgba(0, 0, 0, 0.5)"
         shadow_md = "0 8px 20px rgba(0, 0, 0, 0.6)"
         shadow_lg = "0 10px 25px -5px rgba(0, 0, 0, 0.7)"
@@ -24,23 +25,24 @@ def inject_theme_css():
         tab_text = "#cbd5e1"
         tab_selected_text = "#f1f5f9"
     else:
-        bg_primary = "#f8fafc"
+        bg_primary = "#f5f7fa"
         bg_secondary = "#ffffff"
-        bg_tertiary = "#f1f5f9"
+        bg_tertiary = "#eef2f7"
         card_bg = "#ffffff"
-        card_border = "#e2e8f0"
-        text_primary = "#0f172a"
-        text_secondary = "#475569"
-        text_muted = "#64748b"
-        accent_blue = "#2563eb"
-        gradient_hero = "linear-gradient(135deg, #0f172a 0%, #1e3a8a 40%, #2563eb 100%)"
+        card_border = "#dbe3ec"
+        text_primary = "#0b2447"
+        text_secondary = "#3f5169"
+        text_muted = "#6b7c93"
+        accent_blue = "#19376d"
+        accent_gold = "#c9a227"
+        gradient_hero = "linear-gradient(120deg, #0b2447 0%, #19376d 60%, #245090 100%)"
         shadow_sm = "0 4px 12px rgba(0, 0, 0, 0.03)"
-        shadow_md = "0 8px 20px rgba(37, 99, 235, 0.12)"
-        shadow_lg = "0 10px 25px -5px rgba(37, 99, 235, 0.25)"
+        shadow_md = "0 8px 20px rgba(11, 36, 71, 0.12)"
+        shadow_lg = "0 12px 28px -6px rgba(11, 36, 71, 0.22)"
         tab_bg = "#f1f5f9"
         tab_selected_bg = "#ffffff"
         tab_text = "#475569"
-        tab_selected_text = "#1e3a8a"
+        tab_selected_text = "#0b2447"
 
     st.markdown(f"""
 <style>
@@ -56,6 +58,7 @@ def inject_theme_css():
         --text-secondary: {text_secondary};
         --text-muted: {text_muted};
         --accent-blue: {accent_blue};
+        --accent-gold: {accent_gold};
         --gradient-hero: {gradient_hero};
         --shadow-sm: {shadow_sm};
         --shadow-md: {shadow_md};
@@ -291,7 +294,7 @@ def inject_theme_css():
         padding: 1.25rem 1.5rem;
         box-shadow: var(--shadow-sm);
         transition: all 0.25s ease-in-out;
-        border-top: 4px solid var(--accent-blue);
+        border-top: 4px solid var(--accent-gold);
     }}
     .stat-card:hover {{
         transform: translateY(-3px);
@@ -486,6 +489,96 @@ def inject_theme_css():
     }}
     .stApp {{
         transition: background-color 0.3s ease, color 0.3s ease;
+    }}
+
+    /* ===== Institutional gold accent stripe on hero ===== */
+    .hero-header::before {{
+        content: '';
+        position: absolute;
+        left: 0; top: 0; bottom: 0;
+        width: 6px;
+        background: var(--accent-gold);
+        z-index: 1;
+    }}
+    .hero-inner {{
+        display: flex; align-items: center; gap: 1.1rem;
+        position: relative; z-index: 2;
+    }}
+    .hero-text {{ display: flex; flex-direction: column; }}
+    .hero-eyebrow {{
+        font-size: 0.74rem; font-weight: 700; letter-spacing: 0.16em;
+        text-transform: uppercase; color: var(--accent-gold) !important;
+        margin-bottom: 0.15rem;
+    }}
+    .hero-header h1 {{ line-height: 1.1; }}
+    .hero-meta {{
+        margin-top: 0.65rem; display: inline-flex; align-items: center; gap: 0.45rem;
+        background: rgba(255,255,255,0.12); padding: 0.35rem 0.85rem;
+        border-radius: 999px; font-size: 0.88rem; width: fit-content;
+        color: #ffffff !important;
+    }}
+    .hero-meta strong {{ color: #ffffff !important; }}
+    .hero-meta .dot {{
+        width: 8px; height: 8px; border-radius: 50%;
+        background: #4ade80; display: inline-block;
+    }}
+
+    /* ===== Crest / monogram ===== */
+    .crest {{
+        width: 58px; height: 58px; min-width: 58px;
+        border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        background: rgba(255,255,255,0.10);
+        border: 2px solid var(--accent-gold);
+        color: #ffffff !important;
+        font-family: 'Outfit', sans-serif;
+        font-weight: 800; font-size: 1.02rem; letter-spacing: 0.02em;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+    }}
+
+    /* ===== Login / portal entrance ===== */
+    .login-brand {{ text-align: center; margin: 1rem 0 1.4rem; }}
+    .login-crest {{
+        width: 88px; height: 88px; margin: 0 auto 0.9rem;
+        border-radius: 50%; display: flex; align-items: center; justify-content: center;
+        background: var(--gradient-hero); border: 3px solid var(--accent-gold);
+        color: #ffffff !important; font-family: 'Outfit', sans-serif; font-weight: 800;
+        font-size: 1.55rem; box-shadow: var(--shadow-lg);
+    }}
+    .login-title {{
+        font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 1.75rem;
+        color: var(--text-primary) !important; margin: 0.3rem 0 0.15rem; letter-spacing: -0.01em;
+    }}
+    .login-sub {{ color: var(--text-secondary) !important; font-size: 0.98rem; margin: 0; }}
+    .login-rule {{
+        width: 64px; height: 3px; background: var(--accent-gold);
+        border-radius: 2px; margin: 0.95rem auto 0;
+    }}
+    .portal-footer {{
+        text-align: center; margin-top: 1.5rem; color: var(--text-muted) !important;
+        font-size: 0.82rem; line-height: 1.7;
+    }}
+
+    /* ===== Sidebar profile card ===== */
+    .sb-profile {{
+        display: flex; align-items: center; gap: 0.75rem;
+        padding: 0.9rem; border-radius: 14px;
+        background: var(--bg-tertiary); border: 1px solid var(--card-border);
+        margin-bottom: 0.85rem;
+    }}
+    .sb-avatar {{
+        width: 46px; height: 46px; min-width: 46px; border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        background: var(--gradient-hero); color: #ffffff !important;
+        font-family: 'Outfit', sans-serif; font-weight: 700; font-size: 1rem;
+        border: 2px solid var(--accent-gold);
+    }}
+    .sb-name {{ font-weight: 700; color: var(--text-primary) !important; font-size: 0.95rem; line-height: 1.25; }}
+    .sb-role {{ color: var(--text-secondary) !important; font-size: 0.8rem; }}
+
+    /* ===== Tab selected gold underline ===== */
+    .stTabs [aria-selected="true"] {{
+        border-bottom: 3px solid var(--accent-gold) !important;
     }}
 </style>
 """, unsafe_allow_html=True)
