@@ -303,7 +303,7 @@ def inject_theme_css():
     .stat-label {{
         font-size: 0.85rem;
         font-weight: 600;
-        color: var(--text-muted);
+        color: var(--text-muted) !important;
         text-transform: uppercase;
         letter-spacing: 0.05em;
         margin-bottom: 0.3rem;
@@ -311,7 +311,7 @@ def inject_theme_css():
     .stat-value {{
         font-size: 1.8rem;
         font-weight: 800;
-        color: var(--text-primary);
+        color: var(--text-primary) !important;
         font-family: 'Outfit', sans-serif;
     }}
     .stat-badge {{
@@ -596,6 +596,26 @@ def inject_theme_css():
     /* ===== Tab selected gold underline ===== */
     .stTabs [aria-selected="true"] {{
         border-bottom: 3px solid var(--accent-gold) !important;
+    }}
+
+    /* ===== Animated KPI stat cards ===== */
+    @keyframes fadeInUp {{
+        from {{ opacity: 0; transform: translateY(14px); }}
+        to   {{ opacity: 1; transform: translateY(0); }}
+    }}
+    .stat-card {{
+        animation: fadeInUp 0.55s ease both;
+        height: 100%;
+    }}
+
+    /* ===== Centered chart/section titles ===== */
+    .section-title {{
+        text-align: center;
+        font-family: 'Outfit', 'Inter', sans-serif;
+        font-weight: 700;
+        font-size: 1.15rem;
+        color: var(--text-primary) !important;
+        margin: 0.2rem 0 1rem;
     }}
 </style>
 """, unsafe_allow_html=True)

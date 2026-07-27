@@ -146,11 +146,22 @@ def render(db, perm):
 
             total_absences = student_totals["Absences"].sum()
 
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric("Total Cadets Assessed", f"{len(student_totals)} Cadets")
-            m2.metric("Class Average Marks (%)", f"{overall_avg_pct:.2f}%")
-            m3.metric("Class Letter Grade", grade_info["grade"], delta=grade_info["remarks"])
-            m4.metric("Total Absences Recorded", f"{total_absences}")
+            total_cadets = int(section_data["Student_ID"].nunique())
+            appeared = int(valid_data["Student_ID"].nunique())
+            kpi_cards = [
+                ("Total Cadets", f"{total_cadets}"),
+                ("Total Appeared", f"{appeared}"),
+                ("Class Average", f"{overall_avg_pct:.2f}%"),
+                ("Total Absents", f"{int(total_absences)}"),
+            ]
+            kpi_cols = st.columns(4)
+            for i, (kcol, (klabel, kvalue)) in enumerate(zip(kpi_cols, kpi_cards)):
+                kcol.markdown(
+                    f'<div class="stat-card" style="animation-delay:{i*0.08:.2f}s">'
+                    f'<div class="stat-label">{klabel}</div>'
+                    f'<div class="stat-value">{kvalue}</div></div>',
+                    unsafe_allow_html=True
+                )
 
             if total_absences > 0:
                 st.warning(f"⚠️ **{total_absences} absence(s)** recorded across {len(student_totals[student_totals['Absences'] > 0])} cadet(s). Absent subjects are excluded from percentage calculations.")
@@ -189,7 +200,7 @@ def render(db, perm):
             st.divider()
 
             with st.container(border=True):
-                st.markdown("#### 📊 Subject-Wise Average Performance")
+                st.markdown("<div class='section-title'>📊 Subject-Wise Average Performance</div>", unsafe_allow_html=True)
                 st.markdown("<span class='sr-only'>Subject-wise average performance bar chart showing each subject's average score</span>", unsafe_allow_html=True)
                 subj_perf = valid_data.groupby("Subject").agg(
                     Avg_Obtained=('Marks_Obtained', 'mean'),
@@ -207,12 +218,18 @@ def render(db, perm):
                 fig.patch.set_facecolor(chart_bg)
                 ax.set_facecolor(chart_ax_bg)
 
+                subject_palette = [
+                    "#1e3a8a", "#c9a227", "#0e7490", "#b91c1c", "#15803d",
+                    "#7c3aed", "#ea580c", "#0891b2", "#be185d", "#4d7c0f",
+                    "#334155", "#a16207"
+                ]
+                bar_colors = [subject_palette[i % len(subject_palette)] for i in range(len(subj_perf))]
                 sns.barplot(
                     data=subj_perf,
                     x="Subject",
                     y="Avg_Percentage",
                     hue="Subject",
-                    palette="Blues_r",
+                    palette=bar_colors,
                     legend=False,
                     ax=ax
                 )
@@ -228,41 +245,13 @@ def render(db, perm):
                 for p in ax.patches:
                     h = p.get_height()
                     if h > 0:
-                        ax.annotate(f"{h:.1f}%", (p.get_x() + p.get_width() / 2., h / 2),
-                                    ha='center', va='center', color='white', fontweight='bold', fontsize=9)
+                        ax.annotate(f"{h:.1f}%", (p.get_x() + p.get_width() / 2., h),
+                                    ha='center', va='bottom', color=chart_text_c,
+                                    fontweight='bold', fontsize=9,
+                                    xytext=(0, 3), textcoords='offset points')
 
                 st.pyplot(fig, clear_figure=True)
                 plt.close(fig)
-
-                # --- MARKS DISTRIBUTION ANALYSIS ---
-                with st.container(border=True):
-                    st.markdown("#### 📈 Marks Distribution Analysis")
-                    is_dark = st.session_state.theme == 'dark'
-                    chart_bg2 = '#1e293b' if is_dark else '#ffffff'
-                    chart_ax_bg2 = '#0f172a' if is_dark else '#f8fafc'
-                    chart_text_c2 = '#f1f5f9' if is_dark else '#1e293b'
-                    chart_grid_c2 = '#334155' if is_dark else '#cbd5e1'
-
-                    fig_dist, ax_dist = plt.subplots(figsize=(10, 4), dpi=150)
-                    fig_dist.patch.set_facecolor(chart_bg2)
-                    ax_dist.set_facecolor(chart_ax_bg2)
-
-                    all_pcts = valid_data.groupby('Student_ID')['Marks_Obtained'].sum() / valid_data.groupby('Student_ID')['Max_Marks'].sum() * 100
-                    sns.histplot(all_pcts, bins=15, kde=True, color='#2563eb', ax=ax_dist, alpha=0.6)
-
-                    ax_dist.axvline(all_pcts.mean(), color='#ef4444', linestyle='--', linewidth=2, label=f'Mean: {all_pcts.mean():.1f}%')
-                    ax_dist.axvline(40, color='#f59e0b', linestyle=':', linewidth=2, label='Pass Threshold (40%)')
-
-                    ax_dist.set_xlabel("Percentage (%)", fontsize=10, fontweight='bold', color=chart_text_c2)
-                    ax_dist.set_ylabel("Number of Cadets", fontsize=10, fontweight='bold', color=chart_text_c2)
-                    ax_dist.grid(axis='y', linestyle='--', alpha=0.4, color=chart_grid_c2)
-                    ax_dist.tick_params(colors=chart_text_c2)
-                    for spine in ax_dist.spines.values():
-                        spine.set_color(chart_grid_c2)
-                    ax_dist.legend(frameon=True, facecolor=chart_bg2, edgecolor=chart_grid_c2, labelcolor=chart_text_c2)
-
-                    st.pyplot(fig_dist, clear_figure=True)
-                    plt.close(fig_dist)
 
             st.divider()
 
