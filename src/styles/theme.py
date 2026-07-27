@@ -525,25 +525,32 @@ def inject_theme_css():
 
     /* ===== Crest / monogram ===== */
     .crest {{
-        width: 58px; height: 58px; min-width: 58px;
+        width: 62px; height: 62px; min-width: 62px;
         border-radius: 50%;
         display: flex; align-items: center; justify-content: center;
-        background: rgba(255,255,255,0.10);
+        background: #ffffff;
         border: 2px solid var(--accent-gold);
-        color: #ffffff !important;
-        font-family: 'Outfit', sans-serif;
-        font-weight: 800; font-size: 1.02rem; letter-spacing: 0.02em;
         box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+        overflow: hidden; padding: 4px;
+    }}
+    .crest img {{
+        width: 100%; height: 100%;
+        object-fit: contain; border-radius: 50%;
+        display: block;
     }}
 
     /* ===== Login / portal entrance ===== */
     .login-brand {{ text-align: center; margin: 1rem 0 1.4rem; }}
     .login-crest {{
-        width: 88px; height: 88px; margin: 0 auto 0.9rem;
+        width: 104px; height: 104px; margin: 0 auto 0.9rem;
         border-radius: 50%; display: flex; align-items: center; justify-content: center;
-        background: var(--gradient-hero); border: 3px solid var(--accent-gold);
-        color: #ffffff !important; font-family: 'Outfit', sans-serif; font-weight: 800;
-        font-size: 1.55rem; box-shadow: var(--shadow-lg);
+        background: #ffffff; border: 3px solid var(--accent-gold);
+        box-shadow: var(--shadow-lg); overflow: hidden; padding: 6px;
+    }}
+    .login-crest img {{
+        width: 100%; height: 100%;
+        object-fit: contain; border-radius: 50%;
+        display: block;
     }}
     .login-title {{
         font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 1.75rem;

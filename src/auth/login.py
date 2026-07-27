@@ -2,13 +2,15 @@ import streamlit as st
 import textwrap
 import pandas as pd
 
+from src.styles.logo import LOGO_DATA_URI
+
 
 def login_screen(db):
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        st.markdown(textwrap.dedent("""
+        st.markdown(textwrap.dedent(f"""
         <div class="login-brand">
-            <div class="login-crest">PSCC</div>
+            <div class="login-crest"><img src="{LOGO_DATA_URI}" alt="Pakistan Steel Cadet College crest"></div>
             <div class="hero-eyebrow" style="letter-spacing:0.14em; color:var(--text-muted) !important;">
                 Pakistan Steel Cadet College, Karachi
             </div>
