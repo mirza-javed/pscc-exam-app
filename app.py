@@ -5,11 +5,11 @@ from src.auth.login import login_screen
 from src.auth.permissions import get_staff_permissions
 from src.components.sidebar import render_sidebar
 from src.components.header import render_hero_header
-from src.pages import analytics, data_entry, reports
+from src.pages import analytics, data_entry, reports, question_paper_submission
 
 st.set_page_config(
     page_title="PS Cadet College Karachi Exam Portal",
-    page_icon="\U0001F393",
+    page_icon="🎓",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -31,7 +31,7 @@ st.markdown("""
 inject_theme_css()
 
 try:
-    with st.spinner("\U0001F504 Connecting to PSCC Master Database..."):
+    with st.spinner("🔄 Connecting to PSCC Master Database..."):
         app_db = load_database()
 
     if not st.session_state.logged_in:
@@ -46,10 +46,11 @@ try:
         user_role = user_info.get('Role') or user_info.get('Responsibility') or 'Teacher'
         render_hero_header(user_name, user_role)
 
-        tab1, tab2, tab3 = st.tabs([
-            "\U0001F4CA Examination Analytics",
-            "\u270D Marks Data Entry",
-            "\U0001F4CB Result Reports & Cadet Cards"
+        tab1, tab2, tab3, tab4 = st.tabs([
+            "📊 Examination Analytics",
+            "✍️ Marks Data Entry",
+            "📋 Result Reports & Cadet Cards",
+            "📝 Question Paper Submission"
         ])
 
         with tab1:
@@ -58,6 +59,9 @@ try:
             data_entry.render(app_db, perm)
         with tab3:
             reports.render(app_db, perm)
+        with tab4:
+            question_paper_submission.render(app_db, perm)
+
 
 except Exception as e:
     st.error("\u26A0 **Application Error**")

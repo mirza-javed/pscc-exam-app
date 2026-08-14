@@ -46,7 +46,7 @@ def inject_theme_css():
 
     st.markdown(f"""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700&family=Noto+Nastaliq+Urdu:wght@400;600;700&family=Noto+Sans+Arabic:wght@400;500;600;700&family=Gulzar&family=Lateef:wght@400;600;700&display=swap');
 
     :root {{
         --bg-primary: {bg_primary};
@@ -337,13 +337,28 @@ def inject_theme_css():
         background-color: var(--card-bg) !important;
         color: var(--text-primary) !important;
     }}
-    .stTextInput input {{
+    .stTextInput input, .stTextArea textarea, textarea, [data-baseweb="textarea"] textarea {{
         min-height: 48px !important;
         border-radius: 10px !important;
         background-color: var(--card-bg) !important;
         color: var(--text-primary) !important;
         border-color: var(--card-border) !important;
+        font-family: 'Inter', 'Noto Nastaliq Urdu', 'Noto Sans Arabic', 'Lateef', 'Segoe UI', Tahoma, sans-serif !important;
+        direction: auto !important;
+        unicode-bidi: plaintext !important;
+        font-size: 0.98rem !important;
     }}
+    .stTextArea textarea {{
+        line-height: 1.8 !important;
+    }}
+    .rtl-text, [dir="rtl"], .urdu-text, .sindhi-text {{
+        font-family: 'Noto Nastaliq Urdu', 'Noto Sans Arabic', 'Lateef', 'Segoe UI', Tahoma, sans-serif !important;
+        direction: rtl !important;
+        text-align: right !important;
+        line-height: 2.2 !important;
+    }}
+
+
     .stButton > button {{
         border-radius: 10px !important;
         min-height: 48px !important;

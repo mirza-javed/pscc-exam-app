@@ -35,15 +35,24 @@ def render(db, perm):
                 grading_df = db.get("Grading_System", pd.DataFrame())
 
                 exam_opts = []
-                if not exam_scheme.empty and "Exam_Name" in exam_scheme.columns:
-                    exam_opts = sorted(exam_scheme["Exam_Name"].dropna().unique().tolist())
-                elif not grading_df.empty and "Exam_Name" in grading_df.columns:
-                    exam_opts = sorted(grading_df["Exam_Name"].dropna().unique().tolist())
+                if not exam_scheme.empty:
+                    if "Exam_ID" in exam_scheme.columns:
+                        exam_opts = [str(x).strip() for x in exam_scheme["Exam_ID"].dropna().unique().tolist() if str(x).strip()]
+                    elif "Exam_Name" in exam_scheme.columns:
+                        exam_opts = [str(x).strip() for x in exam_scheme["Exam_Name"].dropna().unique().tolist() if str(x).strip()]
+
+                if not exam_opts and not grading_df.empty:
+                    if "Exam_ID" in grading_df.columns:
+                        exam_opts = [str(x).strip() for x in grading_df["Exam_ID"].dropna().unique().tolist() if str(x).strip()]
+                    elif "Exam_Name" in grading_df.columns:
+                        exam_opts = [str(x).strip() for x in grading_df["Exam_Name"].dropna().unique().tolist() if str(x).strip()]
+
                 if not exam_opts:
-                    exam_opts = ["Monthly_Aug", "First_Term"]
+                    exam_opts = ["EXAM_MONTHLY_AUG_2026", "EXAM_MID_TERM_2026", "EXAM_ANNUAL_2026"]
 
                 sel_exam = st.selectbox("Select Examination", exam_opts, key="entry_exam")
                 sel_grade = st.selectbox("Select Grade", avail_grades, key="entry_grade")
+
 
             with c2:
                 if is_admin:

@@ -6,9 +6,11 @@
 env/
 .env
 
-# Ignore Python cache
-__pycache__/
+# Ignore IDE and cache
+.idea/
+.cache/
 *.pyc
+__pycache__/
 
 # Ignore Screenshots directory
 ScreenShots/

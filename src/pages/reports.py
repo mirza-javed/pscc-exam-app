@@ -130,10 +130,17 @@ def render(db, perm):
                     grading_df = db.get("Grading_System", pd.DataFrame())
 
                     ex_list = ["All Exams"]
-                    if not exam_scheme.empty and "Exam_Name" in exam_scheme.columns:
-                        ex_list += sorted(exam_scheme["Exam_Name"].dropna().unique().tolist())
-                    elif not grading_df.empty and "Exam_Name" in grading_df.columns:
-                        ex_list += sorted(grading_df["Exam_Name"].dropna().unique().tolist())
+                    if not exam_scheme.empty:
+                        if "Exam_ID" in exam_scheme.columns:
+                            ex_list += [str(x).strip() for x in exam_scheme["Exam_ID"].dropna().unique().tolist() if str(x).strip()]
+                        elif "Exam_Name" in exam_scheme.columns:
+                            ex_list += [str(x).strip() for x in exam_scheme["Exam_Name"].dropna().unique().tolist() if str(x).strip()]
+                    elif not grading_df.empty:
+                        if "Exam_ID" in grading_df.columns:
+                            ex_list += [str(x).strip() for x in grading_df["Exam_ID"].dropna().unique().tolist() if str(x).strip()]
+                        elif "Exam_Name" in grading_df.columns:
+                            ex_list += [str(x).strip() for x in grading_df["Exam_Name"].dropna().unique().tolist() if str(x).strip()]
+
                     card_exam = st.selectbox("Exam Term", ex_list, key="card_ex")
 
             if selected_kit_option and selected_kit_option != "No Cadets":
@@ -146,13 +153,14 @@ def render(db, perm):
                     (merged_full["Student_ID"] == student_id) | (merged_full["Kit_No"] == student_id)
                 ].copy()
                 if card_exam != "All Exams":
-                    exam_ids = []
-                    if not exam_scheme.empty and "Exam_Name" in exam_scheme.columns:
-                        exam_ids = exam_scheme.loc[exam_scheme["Exam_Name"] == card_exam, "Exam_ID"].tolist()
-                    elif not grading_df.empty and "Exam_Name" in grading_df.columns:
-                        exam_ids = grading_df.loc[grading_df["Exam_Name"] == card_exam, "Exam_ID"].tolist()
+                    exam_ids = [card_exam]
+                    if not exam_scheme.empty and "Exam_Name" in exam_scheme.columns and "Exam_ID" in exam_scheme.columns:
+                        mapped = exam_scheme.loc[exam_scheme["Exam_Name"] == card_exam, "Exam_ID"].tolist()
+                        if mapped:
+                            exam_ids.extend(mapped)
 
-                    s_marks = s_marks[(s_marks["Exam_ID"].isin(exam_ids)) | (s_marks["Exam_ID"] == card_exam)]
+                    s_marks = s_marks[(s_marks["Exam_ID"].isin(exam_ids)) | (s_marks.get("Exam_Name", "") == card_exam)]
+
 
                 if s_marks.empty:
                     st.warning(f"⚠️ No recorded marks found for Cadet **{card_student_name}** under **{card_exam}**.")

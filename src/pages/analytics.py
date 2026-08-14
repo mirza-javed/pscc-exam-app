@@ -45,24 +45,32 @@ def render(db, perm):
                 grading_df = db.get("Grading_System", pd.DataFrame())
                 exam_scheme_dd = db.get("exam_scheme", pd.DataFrame())
                 exam_options = ["All Exams"]
-                if not exam_scheme_dd.empty and "Exam_Name" in exam_scheme_dd.columns:
-                    exam_options += sorted(exam_scheme_dd["Exam_Name"].dropna().unique().tolist())
-                elif not grading_df.empty and "Exam_Name" in grading_df.columns:
-                    exam_options += sorted(grading_df["Exam_Name"].dropna().unique().tolist())
+                if not exam_scheme_dd.empty:
+                    if "Exam_ID" in exam_scheme_dd.columns:
+                        exam_options += [str(x).strip() for x in exam_scheme_dd["Exam_ID"].dropna().unique().tolist() if str(x).strip()]
+                    elif "Exam_Name" in exam_scheme_dd.columns:
+                        exam_options += [str(x).strip() for x in exam_scheme_dd["Exam_Name"].dropna().unique().tolist() if str(x).strip()]
+                elif not grading_df.empty:
+                    if "Exam_ID" in grading_df.columns:
+                        exam_options += [str(x).strip() for x in grading_df["Exam_ID"].dropna().unique().tolist() if str(x).strip()]
+                    elif "Exam_Name" in grading_df.columns:
+                        exam_options += [str(x).strip() for x in grading_df["Exam_Name"].dropna().unique().tolist() if str(x).strip()]
+
                 dash_exam = st.selectbox("Select Examination", exam_options, key="dash_exam")
 
         section_data = merged_df[(merged_df["Grade"] == dash_grade) & (merged_df["Section"] == dash_section)].copy()
 
         if dash_exam != "All Exams":
             exam_scheme_filt = db.get("exam_scheme", pd.DataFrame())
-            exam_ids = []
-            if not exam_scheme_filt.empty and "Exam_Name" in exam_scheme_filt.columns:
-                exam_ids = exam_scheme_filt.loc[exam_scheme_filt["Exam_Name"] == dash_exam, "Exam_ID"].tolist()
-            elif not grading_df.empty and "Exam_Name" in grading_df.columns:
-                exam_ids = grading_df.loc[grading_df["Exam_Name"] == dash_exam, "Exam_ID"].tolist()
+            exam_ids = [dash_exam]
+            if not exam_scheme_filt.empty and "Exam_Name" in exam_scheme_filt.columns and "Exam_ID" in exam_scheme_filt.columns:
+                mapped = exam_scheme_filt.loc[exam_scheme_filt["Exam_Name"] == dash_exam, "Exam_ID"].tolist()
+                if mapped:
+                    exam_ids.extend(mapped)
             section_data = section_data[
-                (section_data["Exam_ID"].isin(exam_ids)) | (section_data["Exam_ID"] == dash_exam)
+                (section_data["Exam_ID"].isin(exam_ids)) | (section_data.get("Exam_Name", "") == dash_exam)
             ]
+
 
         if section_data.empty:
             st.markdown(f"""
