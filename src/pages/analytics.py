@@ -128,39 +128,149 @@ def render(db, perm):
                     st.error("Missing Student_ID column in merged data.")
                     st.stop()
 
-            valid_data = section_data[section_data["Marks_Obtained"].notna()].copy()
+            # Get list of unique subjects tested in this section & exam
+            subjects_in_exam = [str(s).strip() for s in section_data["Subject"].dropna().unique().tolist() if str(s).strip()]
 
-            total_obtained = valid_data["Marks_Obtained"].sum()
-            total_max = valid_data["Max_Marks"].sum()
-            overall_avg_pct = (total_obtained / total_max * 100.0) if total_max > 0 else 0.0
-            grade_info = calculate_grade_info(overall_avg_pct, grading_df)
+            # Build subject max marks mapping
+            subject_max_map = {}
+            for subj in subjects_in_exam:
+                subj_rows = section_data[section_data["Subject"] == subj]
+                if not subj_rows.empty and "Max_Marks" in subj_rows.columns:
+                    max_val = subj_rows["Max_Marks"].iloc[0]
+                    subject_max_map[subj] = float(max_val) if pd.notna(max_val) and float(max_val) > 0 else 100.0
+                else:
+                    subject_max_map[subj] = 100.0
 
-            student_totals = valid_data.groupby(['Student_ID', 'Name']).agg(
-                Total_Obtained=('Marks_Obtained', 'sum'),
-                Total_Max=('Max_Marks', 'sum')
-            ).reset_index()
+            # Collect all enrolled cadets for this grade & section
+            id_col = "Kit_No" if "Kit_No" in students_df.columns else "Student_ID"
+            class_students = students_df[
+                (students_df["Grade"].astype(str).str.strip() == str(dash_grade).strip()) &
+                (students_df["Section"].astype(str).str.strip() == str(dash_section).strip())
+            ].copy()
 
-            if "Is_Absent" in section_data.columns:
-                absent_per_student = section_data[section_data["Is_Absent"] == True].groupby('Student_ID').size()
-                student_totals["Absences"] = student_totals["Student_ID"].map(absent_per_student).fillna(0).astype(int)
+            all_cadets = []
+            seen_ids = set()
+            if not class_students.empty:
+                for _, s_row in class_students.iterrows():
+                    s_id = str(s_row[id_col]).strip()
+                    if s_id and s_id not in seen_ids:
+                        seen_ids.add(s_id)
+                        all_cadets.append({
+                            "Student_ID": s_id,
+                            "Name": str(s_row.get("Name", s_id)).strip(),
+                            "Group": str(s_row.get("Group", "")).strip(),
+                        })
+
+            for _, s_row in section_data.iterrows():
+                s_id = str(s_row.get("Student_ID", s_row.get("Kit_No", ""))).strip()
+                if s_id and s_id not in seen_ids:
+                    seen_ids.add(s_id)
+                    all_cadets.append({
+                        "Student_ID": s_id,
+                        "Name": str(s_row.get("Name", s_id)).strip(),
+                        "Group": str(s_row.get("Group", "")).strip(),
+                    })
+
+            from src.database.models import filter_students_by_subject_group
+
+            cadet_rows = []
+            for cadet in all_cadets:
+                s_id = cadet["Student_ID"]
+                s_name = cadet["Name"]
+                s_group = cadet["Group"]
+
+                row_data = {
+                    "Student_ID": s_id,
+                    "Name": s_name,
+                }
+
+                total_obtained = 0.0
+                total_max = 0.0
+                appeared_count = 0
+                absences_count = 0
+                eligible_max = 0.0
+
+                for subj in subjects_in_exam:
+                    # Check subject group eligibility (e.g. Bio vs CS)
+                    single_student_df = pd.DataFrame([{"Student_ID": s_id, "Name": s_name, "Group": s_group}])
+                    filtered_single = filter_students_by_subject_group(single_student_df, dash_grade, subj)
+                    if filtered_single.empty:
+                        row_data[subj] = "—"
+                        continue
+
+                    subj_max = subject_max_map.get(subj, 100.0)
+                    eligible_max += subj_max
+
+                    rec = section_data[(section_data["Student_ID"] == s_id) & (section_data["Subject"] == subj)]
+                    if not rec.empty:
+                        if bool(rec["Is_Absent"].iloc[0]):
+                            row_data[subj] = "Absent"
+                            absences_count += 1
+                        elif pd.notna(rec["Marks_Obtained"].iloc[0]):
+                            m_val = float(rec["Marks_Obtained"].iloc[0])
+                            row_data[subj] = int(m_val) if m_val.is_integer() else round(m_val, 2)
+                            total_obtained += m_val
+                            total_max += subj_max
+                            appeared_count += 1
+                        else:
+                            row_data[subj] = "Absent"
+                            absences_count += 1
+                    else:
+                        row_data[subj] = "Absent"
+                        absences_count += 1
+
+                if appeared_count > 0 and total_max > 0:
+                    pct = round((total_obtained / total_max) * 100.0, 2)
+                    grade_res = calculate_grade_info(pct, grading_df)
+                    row_data["Total Score"] = int(total_obtained) if total_obtained.is_integer() else round(total_obtained, 2)
+                    row_data["Total_Max"] = int(total_max) if total_max.is_integer() else round(total_max, 2)
+                    row_data["Percentage"] = pct
+                    row_data["Overall Grade"] = grade_res["grade"]
+                    row_data["Status"] = grade_res["status"]
+                    row_data["Absences"] = absences_count
+                    row_data["Appeared"] = True
+                else:
+                    row_data["Total Score"] = 0
+                    row_data["Total_Max"] = int(eligible_max) if eligible_max.is_integer() else round(eligible_max, 2)
+                    row_data["Percentage"] = 0.0
+                    row_data["Overall Grade"] = "U"
+                    row_data["Status"] = "ABSENT"
+                    row_data["Absences"] = absences_count
+                    row_data["Appeared"] = False
+
+                cadet_rows.append(row_data)
+
+            master_df = pd.DataFrame(cadet_rows)
+            appeared_df = master_df[master_df["Appeared"] == True].copy()
+            absent_df = master_df[master_df["Appeared"] == False].copy()
+
+            if not appeared_df.empty:
+                appeared_df["Rank"] = appeared_df["Percentage"].rank(ascending=False, method="min").astype(int)
+                appeared_df = appeared_df.sort_values(by="Rank")
             else:
-                student_totals["Absences"] = 0
-            student_totals["Percentage"] = (student_totals["Total_Obtained"] / student_totals["Total_Max"] * 100.0).round(2)
-            student_totals["Rank"] = student_totals["Percentage"].rank(ascending=False, method="min").astype(int)
-            student_totals = student_totals.sort_values(by="Rank")
+                appeared_df["Rank"] = []
 
-            pass_count = sum(student_totals["Percentage"] >= 40)
-            pass_rate = (pass_count / len(student_totals) * 100.0) if len(student_totals) > 0 else 0.0
+            if not absent_df.empty:
+                absent_df["Rank"] = "—"
+                absent_df = absent_df.sort_values(by="Student_ID")
 
-            total_absences = student_totals["Absences"].sum()
+            final_merit_df = pd.concat([appeared_df, absent_df], ignore_index=True)
 
-            total_cadets = int(section_data["Student_ID"].nunique())
-            appeared = int(valid_data["Student_ID"].nunique())
+            valid_data = section_data[section_data["Marks_Obtained"].notna()].copy()
+            total_obtained_all = valid_data["Marks_Obtained"].sum()
+            total_max_all = valid_data["Max_Marks"].sum()
+            overall_avg_pct = (total_obtained_all / total_max_all * 100.0) if total_max_all > 0 else 0.0
+
+            total_cadets = len(all_cadets)
+            total_appeared = len(appeared_df)
+            total_absences = int(master_df["Absences"].sum()) if not master_df.empty and "Absences" in master_df.columns else 0
+            total_absent_cadets = len(absent_df) + len(appeared_df[appeared_df["Absences"] > 0]) if not master_df.empty else 0
+
             kpi_cards = [
                 ("Total Cadets", f"{total_cadets}"),
-                ("Total Appeared", f"{appeared}"),
+                ("Total Appeared", f"{total_appeared}"),
                 ("Class Average", f"{overall_avg_pct:.2f}%"),
-                ("Total Absents", f"{int(total_absences)}"),
+                ("Total Absents", f"{total_absences}"),
             ]
             kpi_cols = st.columns(4)
             for i, (kcol, (klabel, kvalue)) in enumerate(zip(kpi_cols, kpi_cards)):
@@ -172,7 +282,7 @@ def render(db, perm):
                 )
 
             if total_absences > 0:
-                st.warning(f"⚠️ **{total_absences} absence(s)** recorded across {len(student_totals[student_totals['Absences'] > 0])} cadet(s). Absent subjects are excluded from percentage calculations.")
+                st.warning(f"⚠️ **{total_absences} absence(s)** recorded across **{total_absent_cadets}** cadet(s). Absent subjects are excluded from percentage calculations.")
 
             st.divider()
 
@@ -180,30 +290,34 @@ def render(db, perm):
             with col_top:
                 with st.container(border=True):
                     st.markdown("#### 🏆 Top 3 Merit Rankers")
-                    top_3 = student_totals.head(3).copy()
-                    top_3["Grade"] = top_3["Percentage"].apply(lambda p: calculate_grade_info(p, grading_df)["grade"])
-                    display_cols = ["Rank", "Student_ID", "Name", "Total_Obtained", "Percentage", "Grade"]
-                    if top_3["Absences"].sum() > 0:
-                        display_cols.insert(5, "Absences")
-                    st.dataframe(
-                        top_3[display_cols],
-                        use_container_width=True,
-                        hide_index=True
-                    )
+                    top_3 = appeared_df.head(3).copy() if not appeared_df.empty else pd.DataFrame()
+                    if not top_3.empty:
+                        display_cols_top = ["Rank", "Student_ID", "Name", "Total Score", "Percentage", "Overall Grade"]
+                        if top_3["Absences"].sum() > 0:
+                            display_cols_top.insert(5, "Absences")
+                        st.dataframe(
+                            top_3[display_cols_top],
+                            use_container_width=True,
+                            hide_index=True
+                        )
+                    else:
+                        st.info("No appeared students found to rank.")
 
             with col_bottom:
                 with st.container(border=True):
                     st.markdown("#### ⚠️ Academic Support Needed (Bottom 3)")
-                    bottom_3 = student_totals.tail(3).sort_values(by="Rank", ascending=False).copy()
-                    bottom_3["Grade"] = bottom_3["Percentage"].apply(lambda p: calculate_grade_info(p, grading_df)["grade"])
-                    display_cols_b = ["Rank", "Student_ID", "Name", "Total_Obtained", "Percentage", "Grade"]
-                    if bottom_3["Absences"].sum() > 0:
-                        display_cols_b.insert(5, "Absences")
-                    st.dataframe(
-                        bottom_3[display_cols_b],
-                        use_container_width=True,
-                        hide_index=True
-                    )
+                    bottom_3 = appeared_df.tail(3).sort_values(by="Rank", ascending=False).copy() if not appeared_df.empty else pd.DataFrame()
+                    if not bottom_3.empty:
+                        display_cols_b = ["Rank", "Student_ID", "Name", "Total Score", "Percentage", "Overall Grade"]
+                        if bottom_3["Absences"].sum() > 0:
+                            display_cols_b.insert(5, "Absences")
+                        st.dataframe(
+                            bottom_3[display_cols_b],
+                            use_container_width=True,
+                            hide_index=True
+                        )
+                    else:
+                        st.info("No appeared students found.")
 
             st.divider()
 
@@ -266,25 +380,31 @@ def render(db, perm):
             with st.container(border=True):
                 st.markdown("#### 📋 Comprehensive Merit Master Sheet")
 
-                pivot_table = valid_data.pivot_table(
-                    index=["Student_ID", "Name"],
-                    columns="Subject",
-                    values="Marks_Obtained",
-                    aggfunc="sum"
-                ).reset_index()
+                display_cols = ["Rank", "Student_ID", "Name"] + subjects_in_exam + ["Total Score", "Total_Max", "Percentage"]
+                if final_merit_df["Absences"].sum() > 0:
+                    display_cols.append("Absences")
+                display_cols += ["Overall Grade", "Status"]
 
-                subject_cols = [c for c in pivot_table.columns if c not in ["Student_ID", "Name"]]
-                pivot_table["Total Score"] = pivot_table[subject_cols].sum(axis=1)
+                st.dataframe(final_merit_df[display_cols], use_container_width=True, hide_index=True)
 
-                merge_cols = [c for c in ["Student_ID", "Total_Max", "Percentage", "Rank", "Absences"] if c in student_totals.columns]
-                pivot_table = pd.merge(pivot_table, student_totals[merge_cols], on="Student_ID")
-                pivot_table["Overall Grade"] = pivot_table["Percentage"].apply(lambda p: calculate_grade_info(p, grading_df)["grade"])
-                pivot_table["Status"] = pivot_table["Percentage"].apply(lambda p: calculate_grade_info(p, grading_df)["status"])
-
-                pivot_table = pivot_table.sort_values(by="Rank").reset_index(drop=True)
-
-                display_cols = ["Rank", "Student_ID", "Name"] + subject_cols + ["Total Score", "Total_Max", "Percentage", "Overall Grade", "Status"]
-                if pivot_table["Absences"].sum() > 0:
-                    display_cols.insert(7, "Absences")
-                st.dataframe(pivot_table[display_cols], use_container_width=True, hide_index=True)
+                m1, m2 = st.columns(2)
+                with m1:
+                    csv_bytes = final_merit_df[display_cols].to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="⬇️ Export Merit Master Sheet (CSV)",
+                        data=csv_bytes,
+                        file_name=f"PSCC_Merit_Sheet_Grade_{dash_grade}_{dash_section}.csv",
+                        mime="text/csv",
+                        use_container_width=True
+                    )
+                with m2:
+                    from src.utils.exports import generate_excel_report
+                    excel_data = generate_excel_report(final_merit_df[display_cols], sheet_name="Merit_Master_Sheet")
+                    st.download_button(
+                        label="📥 Export Styled Excel Report (.xlsx)",
+                        data=excel_data,
+                        file_name=f"PSCC_Merit_Sheet_Grade_{dash_grade}_{dash_section}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True
+                    )
                 plt.close('all')

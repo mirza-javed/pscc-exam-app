@@ -24,10 +24,11 @@ def generate_excel_report(report_df: pd.DataFrame, sheet_name="Marks_Report") ->
             cell.font = header_font
             cell.alignment = Alignment(horizontal="center", vertical="center")
 
-            max_len = max(
-                report_df[col_name].astype(str).map(len).max() if not report_df.empty else 0,
-                len(str(col_name))
-            ) + 4
+            max_val_len = max(
+                (len(str(val)) for val in report_df[col_name] if pd.notna(val)),
+                default=0
+            )
+            max_len = max(max_val_len, len(str(col_name))) + 4
             col_letter = get_column_letter(col_idx)
             worksheet.column_dimensions[col_letter].width = max(max_len, 12)
 

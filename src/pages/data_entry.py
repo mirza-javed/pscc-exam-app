@@ -3,6 +3,62 @@ import pandas as pd
 from src.database.models import get_all_available_subjects, get_subjects_for_grade, filter_students_by_subject_group
 from src.utils.exports import save_marks_to_gsheets
 
+
+def _max_marks(exam_name: str, grade: str, subject: str, db: dict) -> float:
+    scheme = db.get("exam_scheme", pd.DataFrame())
+    if isinstance(scheme, pd.DataFrame) and not scheme.empty:
+        cond = pd.Series(True, index=scheme.index)
+        if "Exam_Name" in scheme.columns:
+            cond = cond & (scheme["Exam_Name"] == exam_name)
+        if "Grade" in scheme.columns:
+            cond = cond & (scheme["Grade"].astype(str) == str(grade))
+        if "Subject" in scheme.columns:
+            cond = cond & (scheme["Subject"] == subject)
+        match = scheme[cond]
+        if not match.empty and "Max_Marks" in match.columns:
+            try:
+                return float(match["Max_Marks"].values[0])
+            except (ValueError, TypeError):
+                pass
+    return 100.0
+
+
+def _valid_entries(entries_df: pd.DataFrame, max_marks: float):
+    valid_rows = []
+    errors = []
+    absent_keywords = {"ab", "a", "absent", "a/b", "n/a", "na", "-"}
+    for idx, row in entries_df.iterrows():
+        raw = row.get("Marks_Obtained")
+        if raw is None or pd.isna(raw):
+            continue
+        s_val = str(raw).strip()
+        if s_val == "" or s_val.lower() == "nan":
+            continue
+        if s_val.lower() in absent_keywords:
+            valid_rows.append(row)
+        else:
+            try:
+                val = float(s_val)
+                name = row.get("Name", f"Row {idx}")
+                if val < 0 or val > max_marks:
+                    errors.append(f"Student {name} marks {val} exceed max marks {max_marks} or are negative.")
+                else:
+                    valid_rows.append(row)
+            except ValueError:
+                valid_rows.append(row)
+    valid_df = pd.DataFrame(valid_rows) if valid_rows else pd.DataFrame(columns=entries_df.columns)
+    return valid_df, errors
+
+
+def _entries_signature(df: pd.DataFrame) -> tuple:
+    if df.empty:
+        return ()
+    records = []
+    for _, row in df.iterrows():
+        records.append(tuple(sorted((str(k), str(v)) for k, v in row.items())))
+    return tuple(sorted(records))
+
+
 def render(db, perm):
     st.subheader("✍️ Marks Data Entry Portal")
 
