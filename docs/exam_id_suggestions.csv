@@ -1,0 +1,7 @@
+Exam_Name,Recommended_Exam_ID,Compact_Exam_ID,Sequential_Exam_ID,Description
+Monthly Test,EXAM_MONTHLY_2026,EX_MT_2026,EXAM_2026_01_MT,Periodic monthly assessment
+1st Term Exam,EXAM_1ST_TERM_2026,EX_T1_2026,EXAM_2026_02_T1,First term evaluation
+Mid Term 2026,EXAM_MID_TERM_2026,EX_MID_2026,EXAM_2026_03_MID,Mid-session examination
+Terminal Exam 2026,EXAM_TERMINAL_2026,EX_TERM_2026,EXAM_2026_04_TERM,Terminal / Semester exam
+Preliminary Exam 2026,EXAM_PRELIMINARY_2026,EX_PRELIM_2026,EXAM_2026_05_PRELIM,Board mock / pre-annual exam
+Annual Exam 2026,EXAM_ANNUAL_2026,EX_ANN_2026,EXAM_2026_06_ANNUAL,Final annual examination

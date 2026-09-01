@@ -1,19 +1,35 @@
-# Ignore Streamlit secrets
+# Environment and Secrets (CRITICAL: Do not commit keys)
 .streamlit/secrets.toml
+.env
+.env*.local
+.env.production
+.env.development
 
-# Ignore virtual environments
+# Node / Next.js
+node_modules/
+.next/
+out/
+build/
+dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python Virtual Environments & Bytecode
 .venv/
 env/
-.env
-
-# Ignore IDE and cache
-.idea/
-.cache/
+venv/
+ENV/
 *.pyc
 __pycache__/
+.pytest_cache/
 
-# Ignore Screenshots directory
+# IDE & OS specific
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+.cache/
+
+# Media / Local Assets
 ScreenShots/
-
-# Ignore docs directory
-docs/
