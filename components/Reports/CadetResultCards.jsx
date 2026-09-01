@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import * as XLSX from "xlsx";
 import {
   BarChart,
@@ -94,7 +94,7 @@ export default function CadetResultCards({ db = {} }) {
 
   // Sync selectedKitNo when meritGrid changes
   useEffect(() => {
-    if (meritGrid.length > 0) {
+    if (meritGrid && meritGrid.length > 0) {
       if (!selectedKitNo || !meritGrid.some((c) => c.Kit_No === selectedKitNo)) {
         setSelectedKitNo(meritGrid[0].Kit_No);
       }
@@ -105,12 +105,15 @@ export default function CadetResultCards({ db = {} }) {
 
   // Selected Cadet Object
   const currentCadet = useMemo(() => {
+    if (!meritGrid || meritGrid.length === 0) return null;
     return meritGrid.find((c) => c.Kit_No === selectedKitNo) || meritGrid[0] || null;
   }, [meritGrid, selectedKitNo]);
 
   // Current Cadet Index for Next/Prev buttons
   const currentIndex = useMemo(() => {
-    return meritGrid.findIndex((c) => c.Kit_No === selectedKitNo);
+    if (!meritGrid || meritGrid.length === 0) return 0;
+    const idx = meritGrid.findIndex((c) => c.Kit_No === selectedKitNo);
+    return idx >= 0 ? idx : 0;
   }, [meritGrid, selectedKitNo]);
 
   const handleNextCadet = () => {

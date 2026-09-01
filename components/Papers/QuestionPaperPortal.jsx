@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   FileText,
   Upload,
@@ -128,10 +128,12 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
     return gradeSubjects.length > 0 ? gradeSubjects : ["English", "Maths", "Physics", "Chemistry"];
   }, [db, selectedGrade]);
 
-  // Sync selected subject
-  if (availableSubjects.length > 0 && !availableSubjects.includes(selectedSubject)) {
-    setSelectedSubject(availableSubjects[0]);
-  }
+  // Sync selected subject safely
+  useEffect(() => {
+    if (availableSubjects.length > 0 && !availableSubjects.includes(selectedSubject)) {
+      setSelectedSubject(availableSubjects[0]);
+    }
+  }, [availableSubjects, selectedSubject]);
 
   // All question papers from database
   const allPapers = useMemo(() => {
