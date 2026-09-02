@@ -38,7 +38,7 @@ export default function Navbar({ staffList = [], db = {}, onRefresh, refreshing 
   const userRole = activeUser?.Role || activeUser?.Responsibility || "Teacher";
 
   return (
-    <header className="sticky top-0 z-40 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800">
+    <header className="no-print sticky top-0 z-40 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         {/* Left: Branding */}
         <div className="flex items-center space-x-3">

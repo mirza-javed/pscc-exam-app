@@ -128,12 +128,14 @@ export default function Home() {
       />
 
       {/* Main Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-6 space-y-5">
-        {/* Hero Banner with User Scope */}
-        <HeroHeader />
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-6 space-y-5 print:p-0 print:m-0 print:max-w-none">
+        {/* Hero Banner with User Scope (Hidden in Print) */}
+        <div className="no-print">
+          <HeroHeader />
+        </div>
 
-        {/* Desktop / Tablet Tab Selector */}
-        <div className="hidden sm:flex p-1.5 bg-slate-200/80 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 space-x-1">
+        {/* Desktop / Tablet Tab Selector (Hidden in Print) */}
+        <div className="no-print hidden sm:flex p-1.5 bg-slate-200/80 dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 space-x-1">
           {tabs.map((tab) => (
             <button
               key={tab.id}
@@ -151,8 +153,8 @@ export default function Home() {
 
         {/* Tab Content Placeholder / Status Area */}
         <div className="space-y-6">
-          {/* Phase 2 Authentication Verification Card */}
-          <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 sm:p-6 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+          {/* Phase 2 Authentication Verification Card (Hidden in Print) */}
+          <div className="no-print bg-white dark:bg-slate-900 rounded-2xl p-5 sm:p-6 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-3">
                 <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold">

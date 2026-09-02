@@ -69,12 +69,23 @@
 
 /* Print styling for official Cadet Result Cards */
 @media print {
+  @page {
+    size: A4 portrait;
+    margin: 8mm;
+  }
+
   body {
     background: #ffffff !important;
     color: #000000 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 
-  .no-print {
+  .no-print,
+  nav,
+  header,
+  footer,
+  button {
     display: none !important;
   }
 
@@ -84,5 +95,6 @@
 
   .page-break {
     page-break-after: always;
+    break-after: page;
   }
 }

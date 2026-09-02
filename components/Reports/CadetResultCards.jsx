@@ -1,17 +1,7 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import * as XLSX from "xlsx";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  Legend,
-  CartesianGrid,
-} from "recharts";
 import {
   Printer,
   Download,
@@ -22,7 +12,6 @@ import {
   CheckCircle2,
   XCircle,
   FileSpreadsheet,
-  Layers,
   ChevronLeft,
   ChevronRight,
   Search,
@@ -30,10 +19,14 @@ import {
   MessageSquare,
   Check,
   FileText,
-  TrendingUp,
+  FileDown,
 } from "lucide-react";
 import { buildClassAnalyticsData } from "@/lib/analytics";
 import { PSCC_LOGO_DATA_URI } from "@/lib/logo";
+import {
+  downloadCadetResultCardPDF,
+  downloadBatchResultCardsPDF,
+} from "@/lib/pdfGenerator";
 
 export default function CadetResultCards({ db = {} }) {
   // Available exam options from exam_scheme or Grading_System
@@ -69,8 +62,9 @@ export default function CadetResultCards({ db = {} }) {
   const [selectedSection, setSelectedSection] = useState("A");
   const [selectedExam, setSelectedExam] = useState(examOptions[0] || "");
   const [selectedKitNo, setSelectedKitNo] = useState("");
-  const [viewMode, setViewMode] = useState("single"); // "single" | "batch" | "table"
+  const [viewMode, setViewMode] = useState("single"); // "single" | "batch"
   const [copied, setCopied] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   // Available sections for chosen grade
   const availableSections = useMemo(() => {
@@ -129,24 +123,48 @@ export default function CadetResultCards({ db = {} }) {
     }
   };
 
-  // Comparative Chart Data: Cadet Score (%) vs Class Average (%) per subject
-  const comparativeChartData = useMemo(() => {
-    if (!currentCadet) return [];
-    return subjects.map((subj) => {
-      const scoreObj = currentCadet.scores?.[subj];
-      const cadetPct = scoreObj && !scoreObj.isAbsent ? Math.round(scoreObj.pct * 10) / 10 : 0;
-      const classAvgObj = subjectAverages.find((s) => s.subject === subj);
-      const classAvgPct = classAvgObj ? classAvgObj.averagePercentage : 0;
+  // Trigger Instant Single Cadet PDF Download
+  const handleDownloadSinglePDF = () => {
+    if (!currentCadet) return;
+    try {
+      setDownloadingPdf(true);
+      downloadCadetResultCardPDF({
+        cadet: currentCadet,
+        grade: selectedGrade,
+        section: selectedSection,
+        exam: selectedExam,
+        subjects,
+        totalCadets: meritGrid.length,
+      });
+    } catch (err) {
+      console.error("PDF generation failed:", err);
+      alert("Failed to generate PDF. Please try again or use the print option.");
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
 
-      return {
-        subject: subj,
-        cadetPercentage: cadetPct,
-        classAveragePercentage: classAvgPct,
-      };
-    });
-  }, [currentCadet, subjects, subjectAverages]);
+  // Trigger Instant Batch Section Dossier PDF Download
+  const handleDownloadBatchPDF = () => {
+    if (!meritGrid || meritGrid.length === 0) return;
+    try {
+      setDownloadingPdf(true);
+      downloadBatchResultCardsPDF({
+        meritGrid,
+        grade: selectedGrade,
+        section: selectedSection,
+        exam: selectedExam,
+        subjects,
+      });
+    } catch (err) {
+      console.error("Batch PDF generation failed:", err);
+      alert("Failed to generate Dossier PDF. Please try again.");
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
 
-  // Trigger Native Print Dialog
+  // Trigger Native Print Dialog (Prints only the result cards due to @media print rules)
   const handlePrint = () => {
     if (typeof window !== "undefined") {
       window.print();
@@ -200,7 +218,7 @@ export default function CadetResultCards({ db = {} }) {
               <span>Cadet Result Cards & Evaluation Dossier</span>
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Print-ready official evaluation cards with subject breakdown, analytics & signatures.
+              Official academic evaluation cards formatted strictly in table layout with one-click PDF download.
             </p>
           </div>
 
@@ -329,7 +347,7 @@ export default function CadetResultCards({ db = {} }) {
           <div className="flex items-center space-x-2 text-xs text-blue-200">
             <FileText className="w-4 h-4 text-amber-400" />
             <span>
-              Ready to print:{" "}
+              Target:{" "}
               <strong>
                 {viewMode === "single"
                   ? `${currentCadet?.Name} (Kit #${currentCadet?.Kit_No})`
@@ -338,17 +356,31 @@ export default function CadetResultCards({ db = {} }) {
             </span>
           </div>
 
-          <div className="flex items-center space-x-2 w-full sm:w-auto justify-end">
-            {viewMode === "single" && (
+          <div className="flex items-center space-x-2 w-full sm:w-auto justify-end flex-wrap gap-2">
+            {viewMode === "single" ? (
               <>
+                {/* 1. Download as PDF Button */}
+                <button
+                  onClick={handleDownloadSinglePDF}
+                  disabled={downloadingPdf || !currentCadet}
+                  className="px-4 py-2 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
+                  title="Download clean standalone PDF result card without charts"
+                >
+                  <FileDown className="w-4 h-4" />
+                  <span>{downloadingPdf ? "Generating PDF..." : "Download as PDF"}</span>
+                </button>
+
+                {/* 2. WhatsApp Copy */}
                 <button
                   onClick={handleShareMessage}
                   className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 border border-slate-700"
                   title="Copy WhatsApp/SMS formatted report"
                 >
                   {copied ? <Check className="w-3.5 h-3.5" /> : <MessageSquare className="w-3.5 h-3.5" />}
-                  <span>{copied ? "Copied to Clipboard!" : "WhatsApp Copy"}</span>
+                  <span>{copied ? "Copied!" : "WhatsApp Copy"}</span>
                 </button>
+
+                {/* 3. Excel Download */}
                 <button
                   onClick={exportSingleExcel}
                   className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 border border-slate-700"
@@ -356,16 +388,38 @@ export default function CadetResultCards({ db = {} }) {
                   <Download className="w-3.5 h-3.5" />
                   <span>Excel (.xlsx)</span>
                 </button>
+
+                {/* 4. Print */}
+                <button
+                  onClick={handlePrint}
+                  className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-1.5 active:scale-95"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Print</span>
+                </button>
+              </>
+            ) : (
+              <>
+                {/* Batch Dossier PDF Download */}
+                <button
+                  onClick={handleDownloadBatchPDF}
+                  disabled={downloadingPdf || meritGrid.length === 0}
+                  className="px-4 py-2 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
+                  title="Download all cadet result cards in one consolidated PDF dossier"
+                >
+                  <FileDown className="w-4 h-4" />
+                  <span>{downloadingPdf ? "Generating Dossier..." : "Download All Cards as PDF"}</span>
+                </button>
+
+                <button
+                  onClick={handlePrint}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-1.5 active:scale-95"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>Print All Cards</span>
+                </button>
               </>
             )}
-
-            <button
-              onClick={handlePrint}
-              className="px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-2 active:scale-95"
-            >
-              <Printer className="w-4 h-4" />
-              <span>{viewMode === "batch" ? "Print All Cards (PDF)" : "Print Result Card"}</span>
-            </button>
           </div>
         </div>
       )}
@@ -386,7 +440,7 @@ export default function CadetResultCards({ db = {} }) {
         <div className="space-y-8">
           {viewMode === "batch" ? (
             /* Batch Dossier: Renders every cadet card sequentially with page break */
-            meritGrid.map((cadet, idx) => (
+            meritGrid.map((cadet) => (
               <div key={cadet.Kit_No} className="page-break">
                 <SingleCardView
                   cadet={cadet}
@@ -395,8 +449,6 @@ export default function CadetResultCards({ db = {} }) {
                   exam={selectedExam}
                   subjects={subjects}
                   totalCadets={meritGrid.length}
-                  subjectAverages={subjectAverages}
-                  showChart={false}
                 />
               </div>
             ))
@@ -410,8 +462,6 @@ export default function CadetResultCards({ db = {} }) {
                 exam={selectedExam}
                 subjects={subjects}
                 totalCadets={meritGrid.length}
-                comparativeChartData={comparativeChartData}
-                showChart={true}
               />
             )
           )}
@@ -423,6 +473,7 @@ export default function CadetResultCards({ db = {} }) {
 
 /**
  * High-DPI Official PS Cadet College Karachi Result Card Component
+ * Formatted strictly in clean table layout without charts.
  */
 function SingleCardView({
   cadet,
@@ -431,10 +482,10 @@ function SingleCardView({
   exam,
   subjects,
   totalCadets,
-  comparativeChartData = [],
-  showChart = true,
 }) {
   if (!cadet) return null;
+
+  const isPass = cadet.isPassed !== false && String(cadet.passStatus || "").toUpperCase() === "PASS";
 
   return (
     <div className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl p-6 sm:p-8 max-w-4xl mx-auto space-y-6 print:border-none print:shadow-none print:p-0 print:m-0 print:text-black">
@@ -474,7 +525,7 @@ function SingleCardView({
         <div>
           <span className="text-slate-400 print:text-gray-500 font-medium">Class / Section:</span>
           <p className="font-bold text-slate-900 dark:text-white print:text-black">
-            Grade {grade}-{section} ({cadet.Group})
+            Grade {grade}-{section} ({cadet.Group || "General"})
           </p>
         </div>
         <div>
@@ -523,7 +574,7 @@ function SingleCardView({
 
         {/* Result Status */}
         <div className={`p-3 rounded-xl border col-span-2 sm:col-span-1 ${
-          cadet.isPassed
+          isPass
             ? "bg-emerald-50 dark:bg-emerald-950/40 print:bg-emerald-50 border-emerald-200 dark:border-emerald-800 text-emerald-800"
             : "bg-rose-50 dark:bg-rose-950/40 print:bg-rose-50 border-rose-200 dark:border-rose-800 text-rose-800"
         }`}>
@@ -535,7 +586,7 @@ function SingleCardView({
       </div>
 
       {/* Subject-Wise Detailed Score Breakdown Table */}
-      <div className="border border-slate-200 dark:border-slate-700 print:border-gray-400 rounded-xl overflow-hidden">
+      <div className="border border-slate-200 dark:border-slate-700 print:border-gray-400 rounded-xl overflow-hidden shadow-sm">
         <table className="w-full text-left text-xs">
           <thead>
             <tr className="bg-slate-100 dark:bg-slate-800 print:bg-gray-200 border-b border-slate-200 dark:border-slate-700 print:border-gray-400 font-bold text-slate-700 dark:text-slate-300 print:text-black uppercase">
@@ -565,18 +616,18 @@ function SingleCardView({
               else if (pct >= 50) { subRemarks = "Average"; subGrade = "D"; }
               else if (pct >= 40) { subRemarks = "Below Average"; subGrade = "E"; }
               else if (isAbsent) { subRemarks = "Absent from Exam"; subGrade = "AB"; }
-              else { subRemarks = "Fail / Academic Support"; subGrade = "U"; }
+              else { subRemarks = "Academic Support"; subGrade = "U"; }
 
               return (
                 <tr key={subj} className={isAbsent ? "bg-slate-50/50 dark:bg-slate-800/30 print:bg-gray-100" : ""}>
-                  <td className="py-2 px-4 text-center text-slate-400 font-mono">{i + 1}</td>
-                  <td className="py-2 px-4 font-bold text-slate-900 dark:text-white print:text-black">{subj}</td>
-                  <td className="py-2 px-4 text-center text-slate-500 print:text-black tabular-nums">
+                  <td className="py-2.5 px-4 text-center text-slate-400 font-mono">{i + 1}</td>
+                  <td className="py-2.5 px-4 font-bold text-slate-900 dark:text-white print:text-black">{subj}</td>
+                  <td className="py-2.5 px-4 text-center text-slate-500 print:text-black tabular-nums">
                     {scoreObj?.maxMarks || 100}
                   </td>
-                  <td className="py-2 px-4 text-center font-bold tabular-nums">
+                  <td className="py-2.5 px-4 text-center font-bold tabular-nums">
                     {isAbsent ? (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold">
+                      <span className="px-1.5 py-0.5 rounded text-[10px] bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 font-bold">
                         ABSENT
                       </span>
                     ) : hasScore ? (
@@ -587,57 +638,48 @@ function SingleCardView({
                       "-"
                     )}
                   </td>
-                  <td className="py-2 px-4 text-center font-bold text-blue-700 dark:text-blue-400 print:text-black tabular-nums">
-                    {hasScore ? `${pct}%` : "-"}
+                  <td className="py-2.5 px-4 text-center font-bold text-blue-700 dark:text-blue-400 print:text-black tabular-nums">
+                    {hasScore ? `${pct}%` : isAbsent ? "AB" : "-"}
                   </td>
-                  <td className="py-2 px-4 text-center font-extrabold">
+                  <td className="py-2.5 px-4 text-center font-extrabold">
                     <span className={`px-1.5 py-0.5 rounded text-[10px] ${
                       isFail || isAbsent ? "text-rose-600 print:text-black" : "text-emerald-700 dark:text-emerald-400 print:text-black"
                     }`}>
                       {subGrade}
                     </span>
                   </td>
-                  <td className="py-2 px-4 text-slate-600 dark:text-slate-400 print:text-black text-[11px] truncate">
+                  <td className="py-2.5 px-4 text-slate-600 dark:text-slate-400 print:text-black text-[11px] truncate">
                     {subRemarks}
                   </td>
                 </tr>
               );
             })}
+
+            {/* Grand Total Summary Row */}
+            <tr className="bg-slate-100/80 dark:bg-slate-800/80 font-bold border-t-2 border-slate-300 dark:border-slate-700 print:border-black text-slate-900 dark:text-white print:text-black">
+              <td className="py-3 px-4 text-center"></td>
+              <td className="py-3 px-4 text-blue-700 dark:text-blue-400 print:text-black uppercase">
+                Grand Total / Aggregate
+              </td>
+              <td className="py-3 px-4 text-center tabular-nums">
+                {cadet.totalMaxMarks}
+              </td>
+              <td className="py-3 px-4 text-center tabular-nums">
+                {cadet.totalObtained}
+              </td>
+              <td className="py-3 px-4 text-center text-blue-700 dark:text-blue-400 print:text-black tabular-nums">
+                {cadet.aggregatePct}%
+              </td>
+              <td className="py-3 px-4 text-center text-emerald-700 dark:text-emerald-400 print:text-black">
+                {cadet.letterGrade}
+              </td>
+              <td className="py-3 px-4 text-[11px]">
+                {isPass ? "Passed Examination" : "Academic Support Needed"}
+              </td>
+            </tr>
           </tbody>
         </table>
       </div>
-
-      {/* Comparative Performance Chart (Hidden in Print) */}
-      {showChart && comparativeChartData.length > 0 && (
-        <div className="no-print bg-slate-50 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2">
-          <h4 className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-            <TrendingUp className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-            <span>Cadet Score (%) vs Class Average (%) Comparison</span>
-          </h4>
-
-          <div className="h-48 w-full pt-1">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={comparativeChartData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
-                <XAxis dataKey="subject" tick={{ fontSize: 10, fill: "#64748b" }} />
-                <YAxis domain={[0, 100]} tick={{ fontSize: 9, fill: "#64748b" }} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "#0f172a",
-                    border: "1px solid #334155",
-                    borderRadius: "8px",
-                    color: "#fff",
-                    fontSize: "11px",
-                  }}
-                />
-                <Legend wrapperStyle={{ fontSize: "11px" }} />
-                <Bar dataKey="cadetPercentage" name="Cadet Score (%)" fill="#2563EB" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="classAveragePercentage" name="Class Average (%)" fill="#94A3B8" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      )}
 
       {/* Formal 3-Tier Signature Block */}
       <div className="pt-8 grid grid-cols-3 gap-4 text-center text-xs text-slate-700 dark:text-slate-300 print:text-black">
