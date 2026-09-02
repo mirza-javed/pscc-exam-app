@@ -96,8 +96,12 @@ export default function LoginScreen({ staffList = [], db = {} }) {
       <div className="w-full max-w-md space-y-6 relative z-10">
         {/* Header Branding */}
         <div className="text-center space-y-2">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-700 via-blue-900 to-slate-900 text-white shadow-xl shadow-blue-900/25 ring-4 ring-white dark:ring-slate-900">
-            <GraduationCap className="w-9 h-9" />
+          <div className="inline-flex items-center justify-center p-1.5 rounded-2xl bg-white shadow-xl shadow-blue-900/20 ring-4 ring-white dark:ring-slate-800">
+            <img
+              src="/pscc-logo.jpg"
+              alt="Pakistan Steel Cadet College Logo"
+              className="w-16 h-16 object-contain rounded-xl"
+            />
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
             PS Cadet College Karachi

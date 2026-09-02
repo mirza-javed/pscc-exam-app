@@ -42,9 +42,11 @@ export default function Navbar({ staffList = [], db = {}, onRefresh, refreshing 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         {/* Left: Branding */}
         <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-700 to-blue-950 flex items-center justify-center text-white shadow-md shadow-blue-900/20">
-            <GraduationCap className="w-6 h-6" />
-          </div>
+          <img
+            src="/pscc-logo.jpg"
+            alt="PS Cadet College Karachi Logo"
+            className="w-10 h-10 object-contain rounded-xl shadow-md border border-slate-200 dark:border-slate-700 bg-white"
+          />
           <div>
             <div className="flex items-center space-x-2">
               <span className="font-bold text-sm sm:text-base text-slate-900 dark:text-white tracking-tight">

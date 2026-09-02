@@ -281,7 +281,7 @@ export default function CadetResultCards({ db = {} }) {
 
           <div className="space-y-1">
             <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-              Examination Term
+              Exam Name
             </label>
             <select
               value={selectedExam}
@@ -510,27 +510,27 @@ function SingleCardView({
 
       {/* Cadet Demographics Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 print:bg-gray-50 print:border-gray-300 text-xs">
-        <div>
+        <div className="min-w-0">
           <span className="text-slate-400 print:text-gray-500 font-medium">Cadet Name:</span>
-          <p className="font-extrabold text-sm text-slate-900 dark:text-white print:text-black truncate">
+          <p className="font-extrabold text-sm text-slate-900 dark:text-white print:text-black truncate" title={cadet.Name}>
             {cadet.Name}
           </p>
         </div>
-        <div>
-          <span className="text-slate-400 print:text-gray-500 font-medium">Kit / Cadet ID:</span>
+        <div className="min-w-0">
+          <span className="text-slate-400 print:text-gray-500 font-medium">Kit No:</span>
           <p className="font-extrabold text-sm text-slate-900 dark:text-white print:text-black font-mono">
             {cadet.Kit_No}
           </p>
         </div>
-        <div>
+        <div className="min-w-0">
           <span className="text-slate-400 print:text-gray-500 font-medium">Class / Section:</span>
-          <p className="font-bold text-slate-900 dark:text-white print:text-black">
+          <p className="font-bold text-slate-900 dark:text-white print:text-black truncate">
             Grade {grade}-{section} ({cadet.Group || "General"})
           </p>
         </div>
-        <div>
-          <span className="text-slate-400 print:text-gray-500 font-medium">Exam Term:</span>
-          <p className="font-bold text-slate-900 dark:text-white print:text-black truncate">
+        <div className="min-w-0">
+          <span className="text-slate-400 print:text-gray-500 font-medium">Exam Name:</span>
+          <p className="font-bold text-slate-900 dark:text-white print:text-black truncate" title={exam}>
             {exam}
           </p>
         </div>
