@@ -150,16 +150,16 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
 
   // Build full structured paper text content
   const fullPaperText = useMemo(() => {
-    let text = `========================================================================\n`;
+    let text = `------------------------------------------------------------------------\n`;
     text += `               PAKISTAN STEEL CADET COLLEGE KARACHI\n`;
     text += `               EXAMINATION DEPARTMENT - QUESTION PAPER\n`;
-    text += `========================================================================\n`;
+    text += `------------------------------------------------------------------------\n`;
     text += `Class: Grade ${selectedGrade}          Subject: ${selectedSubject}          Exam: ${selectedExam}\n`;
     text += `Time Allowed: ${timeAllowed}                                     Total Marks: ${totalMarks}\n`;
     text += `Teacher: ${loggedTeacherName}                                    Date: ${new Date().toLocaleDateString()}\n`;
     text += `------------------------------------------------------------------------\n`;
     text += `GENERAL INSTRUCTIONS:\n${instructions}\n`;
-    text += `========================================================================\n\n`;
+    text += `------------------------------------------------------------------------\n\n`;
 
     // Section A
     text += `SECTION A: MULTIPLE CHOICE QUESTIONS (MCQs) [${mcqs.length} Marks]\n`;
@@ -186,7 +186,7 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
       text += `Q${idx + 1}. ${item.q}  [${item.marks} Marks]\n\n`;
     });
 
-    text += `============================== END OF PAPER ==============================\n`;
+    text += `------------------------------ END OF PAPER ------------------------------\n`;
     return text;
   }, [selectedGrade, selectedSubject, selectedExam, timeAllowed, totalMarks, instructions, mcqs, shortQuestions, longQuestions, loggedTeacherName]);
 
@@ -368,7 +368,7 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
               </div>
 
               <div className="space-y-1">
-                <label className="block text-[11px] font-bold text-slate-500 uppercase">Examination Term</label>
+                <label className="block text-[11px] font-bold text-slate-500 uppercase">Exam Name</label>
                 <select
                   value={selectedExam}
                   onChange={(e) => setSelectedExam(e.target.value)}
@@ -764,6 +764,20 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
                       </div>
                     </div>
 
+                    {/* Paper Content Preview for Faculty */}
+                    {paper.Text_Content && (
+                      <details className="text-xs pt-1">
+                        <summary className="font-bold text-blue-600 hover:text-blue-700 cursor-pointer py-1 select-none">
+                          View Submitted Question Paper Content
+                        </summary>
+                        <pre className="p-3 mt-1.5 bg-slate-900 text-slate-200 rounded-xl font-mono text-[11px] overflow-x-auto max-h-60 border border-slate-800 whitespace-pre-wrap leading-relaxed">
+                          {paper.Text_Content === "#ERROR!"
+                            ? "⚠️ Notice: This submission previously started with '=' which caused Google Sheets to evaluate it as a formula. Formula escaping is now active for all submissions. Please resubmit or preview subsequent submissions."
+                            : paper.Text_Content}
+                        </pre>
+                      </details>
+                    )}
+
                     {/* Admin Feedback Display if present */}
                     {paper.Admin_Feedback && (
                       <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 text-xs text-amber-900 dark:text-amber-200 space-y-1">
@@ -833,11 +847,13 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
                   {/* Paper Content Preview */}
                   {paper.Text_Content && (
                     <details className="text-xs">
-                      <summary className="font-bold text-blue-600 cursor-pointer py-1">
+                      <summary className="font-bold text-blue-600 hover:text-blue-700 cursor-pointer py-1 select-none">
                         View Submitted Question Paper Content
                       </summary>
-                      <pre className="p-3 mt-1 bg-slate-900 text-slate-200 rounded-lg font-mono text-[11px] overflow-x-auto max-h-48 border border-slate-800">
-                        {paper.Text_Content}
+                      <pre className="p-3 mt-1.5 bg-slate-900 text-slate-200 rounded-xl font-mono text-[11px] overflow-x-auto max-h-60 border border-slate-800 whitespace-pre-wrap leading-relaxed">
+                        {paper.Text_Content === "#ERROR!"
+                          ? "⚠️ Notice: This submission previously started with '=' which caused Google Sheets to evaluate it as a formula. Formula escaping is now active for all submissions. Please resubmit or preview subsequent submissions."
+                          : paper.Text_Content}
                       </pre>
                     </details>
                   )}
