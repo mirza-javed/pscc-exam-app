@@ -30,6 +30,7 @@ import {
   MessageSquare,
   Check,
   FileText,
+  TrendingUp,
 } from "lucide-react";
 import { buildClassAnalyticsData } from "@/lib/analytics";
 import { PSCC_LOGO_DATA_URI } from "@/lib/logo";
@@ -155,12 +156,14 @@ export default function CadetResultCards({ db = {} }) {
   // Copy WhatsApp / SMS Notification text to clipboard
   const handleShareMessage = () => {
     if (!currentCadet) return;
-    const text = `*PAKISTAN STEEL CADET COLLEGE KARACHI*\n*Academic Evaluation Summary*\n------------------------------------\nCadet Name: ${currentCadet.Name}\nKit Number: ${currentCadet.Kit_No}\nClass: Grade ${selectedGrade}-${selectedSection} (${currentCadet.Group})\nExamination: ${selectedExam}\n------------------------------------\nTotal Marks: ${currentCadet.totalObtained} / ${currentCadet.totalMaxMarks}\nAggregate: ${currentCadet.aggregatePct}%\nLetter Grade: ${currentCadet.letterGrade}\nSection Merit Rank: #${currentCadet.meritRank} of ${meritGrid.length}\nResult Status: ${currentCadet.passStatus}\n------------------------------------\nRemarks: ${currentCadet.remarks}\nController of Examinations, PSCC Karachi.`;
+    const text = `*PAKISTAN STEEL CADET COLLEGE KARACHI*\n*Academic Evaluation Summary*\n------------------------------------\nCadet Name: ${currentCadet.Name || ""}\nKit Number: ${currentCadet.Kit_No || ""}\nClass: Grade ${selectedGrade}-${selectedSection} (${currentCadet.Group || "General"})\nExamination: ${selectedExam}\n------------------------------------\nTotal Marks: ${currentCadet.totalObtained} / ${currentCadet.totalMaxMarks}\nAggregate: ${currentCadet.aggregatePct}%\nLetter Grade: ${currentCadet.letterGrade}\nSection Merit Rank: #${currentCadet.meritRank} of ${meritGrid.length}\nResult Status: ${currentCadet.passStatus}\n------------------------------------\nRemarks: ${currentCadet.remarks}\nController of Examinations, PSCC Karachi.`;
 
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 3000);
-    });
+    if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 3000);
+      }).catch((e) => console.error("Clipboard copy failed:", e));
+    }
   };
 
   // Export Single Result Card to Excel
@@ -179,9 +182,10 @@ export default function CadetResultCards({ db = {} }) {
     const worksheet = XLSX.utils.json_to_sheet(rows);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Result_Card");
+    const safeName = String(currentCadet.Name || "").replace(/[^a-zA-Z0-9]/g, "_");
     XLSX.writeFile(
       workbook,
-      `PSCC_Result_Card_${currentCadet.Kit_No}_${currentCadet.Name.replace(/[^a-zA-Z0-9]/g, "_")}.xlsx`
+      `PSCC_Result_Card_${currentCadet.Kit_No}_${safeName}.xlsx`
     );
   };
 
