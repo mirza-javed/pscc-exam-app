@@ -45,10 +45,41 @@ def register_fonts():
     urdu_reg = os.path.join(FONTS_DIR, "NotoNastaliqUrdu-Regular.ttf")
     urdu_bold = os.path.join(FONTS_DIR, "NotoNastaliqUrdu-Bold.ttf")
 
-    registered = False
+    # Check root fonts/ directory as well
+    ROOT_FONTS = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "fonts")
+    
+    jameel_urdu = os.path.join(ROOT_FONTS, "urdu", "Jameel_Noori_Nastaleeq_Regular.ttf")
+    if not os.path.exists(jameel_urdu):
+        jameel_urdu = os.path.join(FONTS_DIR, "Jameel_Noori_Nastaleeq_Regular.ttf")
+    if os.path.exists(jameel_urdu):
+        try:
+            pdfmetrics.registerFont(TTFont("JameelNooriNastaleeq", jameel_urdu))
+            _RTL_FONT_NAME = "JameelNooriNastaleeq"
+            _RTL_BOLD_FONT_NAME = "JameelNooriNastaleeq"
+            registered = True
+        except Exception:
+            pass
+
+    lateefi_sindhi = os.path.join(ROOT_FONTS, "sindhi", "MB-Lateefi-SKv2_0.ttf")
+    if not os.path.exists(lateefi_sindhi):
+        lateefi_sindhi = os.path.join(FONTS_DIR, "MB-Lateefi-SKv2_0.ttf")
+    if os.path.exists(lateefi_sindhi):
+        try:
+            pdfmetrics.registerFont(TTFont("MBLateefi", lateefi_sindhi))
+        except Exception:
+            pass
+
+    amiri_arabic = os.path.join(ROOT_FONTS, "arabic", "AmiriQuran-Regular.ttf")
+    if not os.path.exists(amiri_arabic):
+        amiri_arabic = os.path.join(FONTS_DIR, "AmiriQuran-Regular.ttf")
+    if os.path.exists(amiri_arabic):
+        try:
+            pdfmetrics.registerFont(TTFont("AmiriQuran", amiri_arabic))
+        except Exception:
+            pass
 
     # 1. Try Noto Sans Arabic (Best full glyph coverage for Sindhi and Urdu)
-    if os.path.exists(arabic_reg):
+    if os.path.exists(arabic_reg) and not registered:
         try:
             pdfmetrics.registerFont(TTFont("NotoArabic", arabic_reg))
             _RTL_FONT_NAME = "NotoArabic"

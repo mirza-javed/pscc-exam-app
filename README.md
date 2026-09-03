@@ -1,191 +1,163 @@
-# 🎓 PS Cadet College Karachi Exam Portal
+# 🏛️ Pakistan Steel Cadet College (PSCC) - Examination & Academic Portal
 
-Centralized, role-based Streamlit web application for **Pakistan Steel Cadet College Karachi**. Replaces fragmented Google Forms and manual Excel spreadsheets with a real-time Google Sheets API database, teacher-scoped marks entry, visual performance analytics, automated grade mapping, and printable cadet result card exports.
+A modern, dual-stack institutional examination management and academic analytics platform built for **Pakistan Steel Cadet College Karachi**. 
 
----
-
-## ✨ Key Features
-
-* 🔐 **Staff Authentication & Role-Based Access Control (RBAC):** Secure email login matching against `Staff_Directory`.
-  * **Global Access:** `Principal`, `V. Principal`, `Section_Head`, `Admin_Exam`, `In-charge Examination`.
-  * **Class Teacher Scope:** Full access to assigned class (`Class_Teacher_Of`) and section (`Section_Of`) across all subjects.
-  * **Subject Teacher Scope:** Restricted to assigned subjects, grades, and sections per `Teaching_Assignments`.
-* ✍️ **Marks Data Entry & Bulk Upload:** Interactive `st.data_editor` grid or bulk `.csv`/`.xlsx`/`.xls` upload with pre-populated templates, automatic student matching, and Google Sheets batch appending.
-* 🎯 **Grade-Specific Subject Filtering:** Subject dropdown is filtered by `exam_scheme` per selected grade — only subjects with defined max marks for that class appear.
-* 👥 **Group-Based Student Filtering:** When a subject is selected, the student list is automatically filtered to only show students whose academic group takes that subject (e.g., Biology → only Bio group, Computer Science → excludes Bio group in 9-10; Botany → excludes PE/GS in 11-12). Core subjects (English, Urdu, Islamiat, etc.) show all students.
-* 📊 **Global Analytics Dashboard:** Class averages, pass rates, Top 3 / Bottom 3 rankers, subject-wise bar charts, distribution histograms, and a comprehensive merit master sheet.
-* 🎯 **Grade Threshold Mapping:** Computes letter grades (`A++` through `U`), remarks, and pass/fail status from the `Grading_System` sheet with built-in fallback thresholds.
-* 🎓 **Cadet Result Cards:** Official academic evaluation cards with demographics, section merit rank, per-subject breakdown, class-average comparison chart, `.xlsx` export, and printable HTML/PDF output.
-* ❌ **Absent Cadet Tracking:** Teachers enter `AB` or `Absent` for absent cadets in the marks grid. Analytics counts absences per student and shows them in merit tables. Result cards display "Absent" with a highlighted row and exclude absent subjects from totals and ranking.
-* ✅ **Correct Max Marks Resolution:** `Max_Marks` is resolved per `(Exam_ID, Subject, Grade)` triplet, ensuring different subjects with different max marks in the same exam are handled correctly across all grades.
-* 📱 **Mobile-Friendly Design:** Google Fonts (`Inter` / `Outfit`), glassmorphism containers, high-DPI charts, touch-friendly targets, fluid horizontal scrolling.
+The system features a **Next.js 14 (React 18 + Tailwind CSS)** progressive web portal paired with an advanced **Python analytics, ReportLab PDF, and Google Sheets API** engine.
 
 ---
 
-## 📊 Database Architecture (Google Sheets)
+## 🌟 Key Modules & Features
 
-Connects to the workbook **`PS Cadet College - Master Examination Database`**:
+### 1. 📊 Interactive Analytics Dashboard
+* **Institutional Metrics:** Real-time computation of average percentage, class GPA, pass rates, and total cadets enrolled.
+* **Merit List & Class Ranks:** Automatic calculation of aggregated scores, position ranks, and grade tier distribution (A-1, A, B, C, D, Fail).
+* **Absent Cadet Normalization:** Gracefully normalizes absent records (`Absent`, `A`, `-1`) without skewing class statistics.
+* **Subject-Wise Analytics:** Visual breakdown of subject performance, class highest, lowest, and mean scores.
 
-| Tab Name | Description | Key Headers |
-| :--- | :--- | :--- |
-| **`Students`** | Student roster | `Kit_No`, `Name`, `Grade`, `Section`, `Group` |
-| **`Staff_Directory`** | Staff directory | `Teacher_ID`, `Full_Name`, `Email`, `Teaching_Subject`, `Role`, `Class_Teacher_Of`, `Section_Of` |
-| **`Teaching_Assignments`** | Teacher-subject-class mapping | `Teacher_ID`, `Subject`, `Assigned_Grade`, `Assigned_Section_A/B/C`, `Teacher_Name` |
-| **`Grading_System`** | Grade thresholds | `Grade`, `Min Percentage`, `Max Percentage`, `Remarks` |
-| **`exam_scheme`** | Exam max marks per subject | `Exam_ID`, `Exam_Name`, `Grade`, `Subject`, `Max_Marks` |
-| **`Marks_Log`** | Transactional marks | `Submission_ID`, `Kit_No`, `Exam_ID`, `Subject`, `Marks_Obtained` |
-| **`Group_Subjects`** | Group-wise subject lists | `Subjects_of_Gen_Group`, `Subjects_of_Bio_Group`, `Subjects_of_CS_Group`, `Subjects_of_PM_Group`, `Subjects_of_PE_Group`, `Subjects_of_GS_Group` |
-| **`Subjects_Master`** *(optional)* | Legacy subject definitions | `Subject_ID`, `Subject_Name`, `Applicable_Grade`, `Applicable_Stream`, `Is_Core_Subject` |
+### 2. 📝 High-Velocity Marks Entry Portal
+* **Rapid Data Entry:** Keyboard-navigable grid designed for seamless and fast input of cadet scores.
+* **Smart Validation:** Validates entered marks against maximum allowable limits derived from `exam_scheme`.
+* **Absent Cadet Support:** Direct input of absent indicators (`Absent` or `A`) with automatic system normalization.
+* **Offline Drafts & Auto-Saving:** Draft persistence via local state to prevent data loss during network hiccups.
+* **Excel Master Sheet Export:** Generates standardized Excel spreadsheets formatted with institutional styles.
 
----
+### 3. 🎓 Cadet Result Cards & Batch Dossiers
+* **Cadet Search by Kit Number:** Interactive search box with real-time suggestions matching cadet names and `Kit_No` (e.g., `26001`). Selecting a cadet immediately switches the filter and renders their official result card.
+* **Responsive 4-Column Controls:** Cleanly organized filters for **Grade / Class**, **Section**, **Exam Name**, and **Search by Kit No**.
+* **Print-Ready Official Result Cards:** Formatted with official PSCC crest, student bio, subject marks breakdown, percentage, rank, attendance, and coordinator remarks.
+* **Batch Section Dossiers:** Generate and print or export all cadet result cards in a section in a single consolidated PDF dossier.
 
-## 🏗️ Architecture
-
-```mermaid
-flowchart TD
-    A[Staff Login] --> B[Auth & RBAC]
-    B --> C{Staff_Directory Lookup}
-    C -->|Admin Role| D[Full Access]
-    C -->|Teacher Role| E[Teaching_Assignments Filter]
-    D --> F[Portal]
-    E --> F
-    F --> G[Analytics Dashboard]
-    F --> H[Marks Data Entry]
-    F --> I[Result Cards & Export]
-    H --> J[(Marks_Log Sheet)]
-    G --> J
-    I --> J
-```
+### 4. 📄 Question Paper Portal & Academic Workflow
+* **Structured Multi-Section Builder:** Composes examination papers across Section A (MCQs), Section B (Short Questions), and Section C (Descriptive/Long Questions).
+* **Automatic Deduction from `exam_scheme`:** Automatically deduces and applies **Total Marks** and **Time Allowed** from the `exam_scheme` Google Sheet tab whenever the teacher selects the Grade, Subject, and Exam Name.
+* **Optional Custom Instructions Box:** Allows faculty to supply custom exam instructions with zero forced prefilled boilerplate.
+* **Multilingual Custom RTL Typography:** Native support for right-to-left (RTL) examination papers using custom TrueType fonts:
+  * **Urdu:** `Jameel Noori Nastaleeq`
+  * **Sindhi:** `MB Lateefi`
+  * **Arabic / Islamiat:** `Amiri Quran`
+  * **English:** `Calibri` / `Inter`
+* **Dual Format Downloads:** One-click download as standardized **PDF** or fully editable Microsoft Word (**`.docx`**) document.
+* **Academic Review Workflow:** Tracks faculty submissions with approval and revision request workflows for Academic Coordinators.
 
 ---
 
-## 🛠️ Tech Stack
+## 🗄️ Google Sheets Database Architecture
 
-| Layer | Technology |
-|-------|-----------|
-| Language | Python 3.11 |
-| Web Framework | Streamlit |
-| Data | Pandas, NumPy |
-| Charts | Matplotlib, Seaborn |
-| Database | Google Sheets API (`gspread` + `oauth2client`) |
-| Export | `openpyxl` (`.xlsx`), HTML/CSS Print (`.html` / PDF) |
-| Config | TOML / Streamlit Secrets |
+The system connects to a multi-tab relational Google Sheets database:
 
----
-
-## ⚙️ Installation
-
-### 1. Clone
-```bash
-git clone https://github.com/your-org/PSCC-Exam-App.git
-cd PSCC-Exam-App
-```
-
-### 2. Virtual Environment
-```bash
-python -m venv .venv
-# Windows
-.venv\Scripts\activate
-# macOS / Linux
-source .venv/bin/activate
-```
-
-### 3. Dependencies
-```bash
-pip install -r requirements.txt
-```
-
-### 4. Google Sheets Credentials
-Create `.streamlit/secrets.toml`:
-
-```toml
-[gcp_service_account]
-type = "service_account"
-project_id = "your-project-id"
-private_key_id = "your-key-id"
-private_key = "-----BEGIN PRIVATE KEY-----\nYOUR_KEY\n-----END PRIVATE KEY-----\n"
-client_email = "bot@your-project.iam.gserviceaccount.com"
-client_id = "your-client-id"
-auth_uri = "https://accounts.google.com/o/oauth2/auth"
-token_uri = "https://oauth2.googleapis.com/oauth2/v4/token"
-auth_provider_x509_cert_url = "https://www.googleapis.com/oauth2/v1/certs"
-client_x509_cert_url = "https://www.googleapis.com/robot/v1/metadata/x509/your-client-email"
-```
-
-> Share the Google Sheet with `client_email` as **Editor**.
+| Tab Name | Purpose & Primary Fields |
+| :--- | :--- |
+| `Students` | Cadet roster: `Kit_No`, `Name`, `Grade`, `Section`, `Father_Name`, `Stream` |
+| `Teaching_Assignments` | Faculty allocations: `Teacher_Name`, `Subject`, `Grade`, `Section` |
+| `Marks_Entry` | Historical & active marks: `Kit_No`, `Exam_ID`, `Subject`, `Marks_Obtained` |
+| `exam_scheme` | Examination specs: `Exam_ID`, `Exam_Name`, `Grade`, `Subject`, `Max_Marks`, `Time_Allowed` |
+| `Grading_System` | Institutional grading tiers, bounds, and GPA scales |
+| `Staff_Directory` | Faculty credentials, role mappings, and email addresses |
+| `Subjects_Master` | Authorized subject list by grade level |
+| `Question_Papers_Log` | Question paper submissions, raw text content, statuses, and reviewer feedback |
+| `Role_Permissions` | Role-based access control (RBAC) definitions and assigned scopes |
 
 ---
 
-## 🚀 Running
-
-```bash
-.venv\Scripts\streamlit.exe run app.py
-# or
-python -m streamlit run app.py
-```
-
-Opens at `http://localhost:8501`.
-
----
-
-## 📁 Project Structure
+## 📁 Repository Structure
 
 ```
 PSCC-Exam-App/
-├── .streamlit/
-│   └── secrets.toml              # GCP credentials (git-ignored)
-├── ScreenShots/                  # UI screenshots
-├── static/
-│   └── manifest.json             # PWA manifest
-├── src/
-│   ├── __init__.py
-│   ├── auth/
-│   │   ├── __init__.py
-│   │   ├── login.py              # Email-based authentication
-│   │   └── permissions.py        # RBAC (admin / class teacher / subject teacher)
-│   ├── components/
-│   │   ├── __init__.py
-│   │   ├── header.py             # Hero banner
-│   │   └── sidebar.py            # User info & theme toggle
-│   ├── database/
-│   │   ├── __init__.py
-│   │   ├── connection.py         # Google Sheets connection & caching
-│   │   └── models.py             # Data merge, grade subject filter, group-based student filter
-│   ├── pages/
-│   │   ├── __init__.py
-│   │   ├── analytics.py          # Dashboard: averages, ranks, charts, merit grid
-│   │   ├── data_entry.py         # Marks entry: editor grid + bulk upload + group-filtered students
-│   │   └── reports.py            # Result cards: per-student breakdown + export + absent handling
-│   ├── styles/
-│   │   ├── __init__.py
-│   │   └── theme.py              # Light/dark CSS injection
-│   └── utils/
-│       ├── __init__.py
-│       ├── charts.py             # Color palette helper
-│       ├── exports.py            # Excel (.xlsx) generation + GSheets save + absent normalization
-│       └── grading.py            # Grade calculation engine (A++ through U)
-├── tests/
-│   ├── __init__.py
-│   ├── test_grading.py           # Grade calculation unit tests
-│   ├── test_models.py            # Model helper tests
-│   └── test_permissions.py       # RBAC permission tests
-├── app.py                        # Main entry point
-├── config.py                     # GSheets scope & sheet name
-├── PROJECT_SUMMARY.md            # Technical summary
-├── README.md                     # This file
-└── requirements.txt              # Python dependencies
+├── app/                              # Next.js 14 App Router
+│   ├── api/                          # API routes (auth, database, marks, question-papers)
+│   ├── globals.css                   # Global styling, print rules, and custom @font-face
+│   ├── layout.js                     # Root layout with responsive navigation & theme provider
+│   └── page.js                       # Primary web application interface
+├── components/                       # React components
+│   ├── Analytics/                    # Analytics Dashboard & charts
+│   ├── Auth/                         # Role-based context switcher & login modal
+│   ├── Layout/                       # Header, navigation, and theme toggler
+│   ├── MarksEntry/                   # Marks Entry grid & Excel exporter
+│   ├── Papers/                       # Question Paper Builder & Academic Review panel
+│   └── Reports/                      # Cadet Result Cards & Batch Dossiers
+├── fonts/                            # Custom RTL Unicode Fonts
+│   ├── arabic/                       # AmiriQuran-Regular.ttf
+│   ├── sindhi/                       # MB-Lateefi-SKv2_0.ttf
+│   └── urdu/                         # Jameel_Noori_Nastaleeq_Regular.ttf
+├── lib/                              # Core JavaScript utilities
+│   ├── analytics.js                  # Merit ranking and class statistics engine
+│   ├── googleSheets.js               # Google Sheets API v4 integration
+│   ├── models.js                     # Schema resolvers & exam_scheme specifications deductor
+│   ├── paperDocumentGenerator.js     # PDF & Word (.docx) generator with RTL font support
+│   ├── pdfGenerator.js               # jsPDF result card & dossier generator
+│   └── store.js                      # Zustand state management
+├── public/                           # Static assets, institutional crest, and fonts
+├── src/                              # Python Streamlit application core
+│   ├── database/                     # Python Google Sheets connector & models
+│   ├── pages/                        # Streamlit pages (analytics, data entry, reports, papers)
+│   └── utils/                        # Python ReportLab PDF and docx generators
+├── tests/                            # Pytest automated test suite (25 unit tests)
+├── requirements.txt                  # Python dependencies
+└── package.json                      # Node.js dependencies
 ```
 
 ---
 
-## 🧪 Tests
+## 🛠️ Installation & Setup
+
+### Prerequisites
+* **Node.js:** v18.17+ or v20+
+* **Python:** v3.10+ (for Python analytics & test suite)
+* **Google Cloud Console:** Service account credentials with Google Sheets API enabled
+
+### 1. Web Application (Next.js)
 
 ```bash
-python -m pytest tests/ -v
+# Clone the repository
+git clone https://github.com/mirza-javed/pscc-exam-app.git
+cd pscc-exam-app
+
+# Install npm dependencies
+npm install
+
+# Run the development server
+npm run dev
+
+# Build for production
+npm run build
+```
+
+Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+### 2. Python Core & Automated Test Suite
+
+```bash
+# Activate your virtual environment
+# Windows:
+.venv\Scripts\activate
+
+# Install Python requirements
+pip install -r requirements.txt
+
+# Run all automated unit tests
+pytest tests/ -v
+```
+
+All 25 automated unit tests verify:
+* Absent cadet normalization and master sheet generation.
+* Max marks extraction from `exam_scheme`.
+* Grading boundary criteria and zero/perfect score edge cases.
+* Role-based access control and teacher assignment scopes.
+
+---
+
+## 🔐 Environment Variables
+
+Create `.env.local` for Next.js:
+
+```env
+GOOGLE_SERVICE_ACCOUNT_EMAIL="your-service-account@project.iam.gserviceaccount.com"
+GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+GOOGLE_SHEET_ID="your_google_sheet_id_here"
+NEXT_PUBLIC_APP_ENV="production"
 ```
 
 ---
 
-## 🛡️ License
-
-Developed for **Pakistan Steel Cadet College Karachi**. All rights reserved.
+## 📜 License
+Developed for **Pakistan Steel Cadet College Karachi**. Internal institutional and academic use only.

@@ -200,13 +200,15 @@ def generate_question_paper_docx(
         if marks and marks.strip():
             sec_header_text += f" ({marks.strip()})"
 
+        rtl_font = "MB Lateefi" if "sindhi" in subject.lower() else ("Amiri Quran" if ("arabic" in subject.lower() or "islamiat" in subject.lower()) else "Jameel Noori Nastaleeq")
+
         if title_rtl:
             set_paragraph_bidi(p_sec)
             p_sec.alignment = WD_ALIGN_PARAGRAPH.RIGHT
             r_sec = p_sec.add_run(sec_header_text)
             r_sec.bold = True
-            r_sec.font.name = "Noto Nastaliq Urdu"
-            r_sec.font.size = Pt(12)
+            r_sec.font.name = rtl_font
+            r_sec.font.size = Pt(13)
             r_sec.font.color.rgb = RGBColor(30, 58, 138)
         else:
             p_sec.alignment = WD_ALIGN_PARAGRAPH.LEFT
@@ -229,8 +231,8 @@ def generate_question_paper_docx(
                     set_paragraph_bidi(p_q)
                     p_q.alignment = WD_ALIGN_PARAGRAPH.RIGHT
                     r_q = p_q.add_run(block_clean)
-                    r_q.font.name = "Noto Nastaliq Urdu"
-                    r_q.font.size = Pt(11)
+                    r_q.font.name = rtl_font
+                    r_q.font.size = Pt(12)
                 else:
                     p_q.alignment = WD_ALIGN_PARAGRAPH.LEFT
                     r_q = p_q.add_run(block_clean)

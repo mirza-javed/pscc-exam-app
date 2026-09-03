@@ -115,7 +115,7 @@ def render(db: dict, perm: dict) -> None:
             if lang_choice == "اردو (Urdu)":
                 def_time = "2 گھنٹے"
                 def_marks = "75 نمبر"
-                def_inst = "1. تمام سوالات کے جوابات صاف اور واضح تحریر کریں۔\n2. موبائل فون اور غیر متعلقہ مواد لانا سختی سے منع ہے۔\n3. خوشخطی کا خاص خیال رکھیں۔"
+                def_inst = ""
                 def_sec_a_title = "حصہ اول: کثیر الانتخابی سوالات (MCQs)"
                 def_sec_a_marks = "20 نمبر"
                 def_sec_a_ph = "سوال نمبر 1: درست جواب کا انتخاب کریں:\n۱. عقیدہ توحید سے کیا مراد ہے؟\n   الف) ایک ماننا   ب) دو ماننا   ج) تین ماننا\n\n۲. اسلام کا پہلا رکن کون سا ہے؟"
@@ -128,7 +128,7 @@ def render(db: dict, perm: dict) -> None:
             elif lang_choice == "سنڌي (Sindhi)":
                 def_time = "2 ڪلاڪ"
                 def_marks = "75 مارڪون"
-                def_inst = "۱. سڀني سوالن جا جواب صاف ۽ پڙهڻ لائق لکو.\n۲. موبائيل فون جو استعمال سختي سان منع آهي.\n۳. صفائي ۽ خوشخط جو خاص خيال رکو."
+                def_inst = ""
                 def_sec_a_title = "حصو پهريون: گهڻ-چونڊ سوال (MCQs)"
                 def_sec_a_marks = "20 مارڪون"
                 def_sec_a_ph = "سوال نمبر ۱: صحيح جواب جي چونڊ ڪريو:\n۱. شاهه عبداللطيف ڀٽائيءَ جي درگاهه ڪٿي آهي؟\n   الف) ڀٽ شاهه   ب) سيوهڻ   ج) هالا\n\n۲. سنڌي ٻوليءَ جي رسم الخط ڪهڙي آهي؟"
@@ -141,7 +141,7 @@ def render(db: dict, perm: dict) -> None:
             else:
                 def_time = "2 Hours"
                 def_marks = "75 Marks"
-                def_inst = "1. Answer all questions clearly.\n2. Mobile phones and calculators are strictly forbidden.\n3. Write legibly and maintain neatness."
+                def_inst = ""
                 def_sec_a_title = "Section A: Multiple Choice Questions (MCQs)"
                 def_sec_a_marks = "20 Marks"
                 def_sec_a_ph = "Q1. Choose the correct option:\ni. What is the SI unit of force?\n   a) Joule   b) Newton   c) Watt   d) Pascal\n\nii. Vector quantities have:\n   a) Magnitude only   b) Direction only   c) Both magnitude & direction"
@@ -158,8 +158,9 @@ def render(db: dict, perm: dict) -> None:
                 time_allowed = m1.text_input("Time Allowed", value=def_time, key=f"time_{lang_choice}")
                 total_marks = m2.text_input("Total Marks", value=def_marks, key=f"marks_{lang_choice}")
                 instructions = st.text_area(
-                    "General Instructions for Cadets / ہدایات",
+                    "Optional General Instructions for Cadets / اختیاری ہدایات",
                     value=def_inst,
+                    placeholder="Optional: Enter general exam instructions or leave blank if none...",
                     height=80,
                     key=f"inst_{lang_choice}"
                 )

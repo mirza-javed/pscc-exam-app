@@ -22,10 +22,18 @@ import {
   X,
   MessageSquare,
   Check,
+  FileDown,
+  Type,
 } from "lucide-react";
 import { useAuthStore } from "@/lib/store";
-import { getSubjectsForGrade } from "@/lib/models";
+import { getSubjectsForGrade, resolveExamSchemeSpecs } from "@/lib/models";
 import { PSCC_LOGO_DATA_URI } from "@/lib/logo";
+import {
+  downloadQuestionPaperPDF,
+  downloadQuestionPaperDOCX,
+  resolvePaperFontConfig,
+  cleanQuestionPaperContent,
+} from "@/lib/paperDocumentGenerator";
 
 export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
   const effectiveContext = useAuthStore((state) => state.getEffectiveContext());
@@ -76,9 +84,7 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
   const [submissionType, setSubmissionType] = useState("Direct Text"); // "Direct Text" | "File Upload"
   const [timeAllowed, setTimeAllowed] = useState("3 Hours");
   const [totalMarks, setTotalMarks] = useState("100");
-  const [instructions, setInstructions] = useState(
-    "1. Read all questions carefully before attempting.\n2. Section A (MCQs) is compulsory.\n3. Write your responses clearly and legibly."
-  );
+  const [instructions, setInstructions] = useState("");
 
   // Section A: MCQs
   const [mcqs, setMcqs] = useState([
@@ -112,6 +118,76 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
     },
   ]);
 
+  // Font and Typography State (for custom fonts in fonts/ directory)
+  const [selectedFontMode, setSelectedFontMode] = useState("auto"); // "auto" | "urdu" | "sindhi" | "arabic" | "english"
+  const [downloadingDocx, setDownloadingDocx] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+
+  // Auto-switch font mode when subject changes
+  useEffect(() => {
+    const subj = String(selectedSubject || "").toLowerCase();
+    if (subj.includes("urdu")) {
+      setSelectedFontMode("urdu");
+    } else if (subj.includes("sindhi")) {
+      setSelectedFontMode("sindhi");
+    } else if (subj.includes("arabic") || subj.includes("islamiat") || subj.includes("quran")) {
+      setSelectedFontMode("arabic");
+    } else {
+      setSelectedFontMode("auto");
+    }
+  }, [selectedSubject]);
+
+  // Download Handlers
+  const handleDownloadDOCX = async (paper) => {
+    try {
+      setDownloadingDocx(true);
+      await downloadQuestionPaperDOCX(
+        {
+          grade: paper?.Grade || selectedGrade,
+          subject: paper?.Subject || selectedSubject,
+          examId: paper?.Exam_ID || selectedExam,
+          teacherName: paper?.Teacher_Name || loggedTeacherName,
+          submittedAt: paper?.Submitted_At,
+          textContent: paper?.Text_Content || fullPaperText,
+          timeAllowed,
+          totalMarks,
+          instructions,
+        },
+        selectedFontMode
+      );
+    } catch (err) {
+      console.error("DOCX download error:", err);
+      alert("Failed to download Word document: " + err.message);
+    } finally {
+      setDownloadingDocx(false);
+    }
+  };
+
+  const handleDownloadPDF = (paper) => {
+    try {
+      setDownloadingPdf(true);
+      downloadQuestionPaperPDF(
+        {
+          grade: paper?.Grade || selectedGrade,
+          subject: paper?.Subject || selectedSubject,
+          examId: paper?.Exam_ID || selectedExam,
+          teacherName: paper?.Teacher_Name || loggedTeacherName,
+          submittedAt: paper?.Submitted_At,
+          textContent: paper?.Text_Content || fullPaperText,
+          timeAllowed,
+          totalMarks,
+          instructions,
+        },
+        selectedFontMode
+      );
+    } catch (err) {
+      console.error("PDF download error:", err);
+      alert("Failed to download PDF: " + err.message);
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
+
   // External File Mode state
   const [fileUrl, setFileUrl] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -135,6 +211,20 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
     }
   }, [availableSubjects, selectedSubject]);
 
+  // Automatically deduce Total Marks and Time Allowed from Google Sheet exam_scheme
+  const examSchemeSpecs = useMemo(() => {
+    return resolveExamSchemeSpecs(selectedExam, selectedGrade, selectedSubject, db);
+  }, [selectedExam, selectedGrade, selectedSubject, db]);
+
+  useEffect(() => {
+    if (examSchemeSpecs.totalMarks) {
+      setTotalMarks(examSchemeSpecs.totalMarks);
+    }
+    if (examSchemeSpecs.timeAllowed) {
+      setTimeAllowed(examSchemeSpecs.timeAllowed);
+    }
+  }, [examSchemeSpecs]);
+
   // All question papers from database
   const allPapers = useMemo(() => {
     return db.Question_Papers_Log || [];
@@ -148,18 +238,15 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
     );
   }, [allPapers, isAdmin, loggedTeacherName]);
 
-  // Build full structured paper text content
+  // Build full structured paper text content (zero duplicate header content)
   const fullPaperText = useMemo(() => {
-    let text = `------------------------------------------------------------------------\n`;
-    text += `               PAKISTAN STEEL CADET COLLEGE KARACHI\n`;
-    text += `               EXAMINATION DEPARTMENT - QUESTION PAPER\n`;
-    text += `------------------------------------------------------------------------\n`;
-    text += `Class: Grade ${selectedGrade}          Subject: ${selectedSubject}          Exam: ${selectedExam}\n`;
-    text += `Time Allowed: ${timeAllowed}                                     Total Marks: ${totalMarks}\n`;
-    text += `Teacher: ${loggedTeacherName}                                    Date: ${new Date().toLocaleDateString()}\n`;
-    text += `------------------------------------------------------------------------\n`;
-    text += `GENERAL INSTRUCTIONS:\n${instructions}\n`;
-    text += `------------------------------------------------------------------------\n\n`;
+    let text = "";
+
+    // Include custom instructions only if user entered them
+    if (instructions && instructions.trim()) {
+      text += `GENERAL INSTRUCTIONS:\n${instructions.trim()}\n\n`;
+      text += `------------------------------------------------------------------------\n\n`;
+    }
 
     // Section A
     text += `SECTION A: MULTIPLE CHOICE QUESTIONS (MCQs) [${mcqs.length} Marks]\n`;
@@ -188,7 +275,7 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
 
     text += `------------------------------ END OF PAPER ------------------------------\n`;
     return text;
-  }, [selectedGrade, selectedSubject, selectedExam, timeAllowed, totalMarks, instructions, mcqs, shortQuestions, longQuestions, loggedTeacherName]);
+  }, [instructions, mcqs, shortQuestions, longQuestions]);
 
   // Handle Question Paper Submission
   const handleSubmitPaper = async (e) => {
@@ -389,6 +476,60 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
                   className="w-full min-h-[44px] px-3 py-2 bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm font-semibold text-slate-500 cursor-not-allowed"
                 />
               </div>
+
+              {/* Exam Scheme auto-deduced notification */}
+              {examSchemeSpecs.found && (
+                <div className="col-span-full pt-1">
+                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/80 text-xs font-semibold text-emerald-800 dark:text-emerald-300 shadow-sm">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span>
+                      Google Sheet <strong>exam_scheme</strong> detected: <strong>{examSchemeSpecs.totalMarks} Marks</strong> • <strong>{examSchemeSpecs.timeAllowed}</strong> auto-applied
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Language & Custom Font Selection */}
+            <div className="pt-3 border-t border-slate-100 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+              <div className="space-y-1">
+                <label className="block text-[11px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <Type className="w-3.5 h-3.5" />
+                  <span>Language & Custom Font (RTL / LTR)</span>
+                </label>
+                <select
+                  value={selectedFontMode}
+                  onChange={(e) => setSelectedFontMode(e.target.value)}
+                  className="w-full min-h-[44px] px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-600"
+                >
+                  <option value="auto">✨ Auto Detect (Smart Match Subject)</option>
+                  <option value="urdu">Urdu — Jameel Noori Nastaleeq (RTL)</option>
+                  <option value="sindhi">Sindhi — MB Lateefi (RTL)</option>
+                  <option value="arabic">Arabic / Islamiat — Amiri Quran (RTL)</option>
+                  <option value="english">English / Standard — Inter / Calibri (LTR)</option>
+                </select>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                  Custom fonts from <code className="text-blue-600 dark:text-blue-400 font-mono">fonts/</code> folder applied to preview, Word (.docx), and PDF.
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                  Active Font & Text Direction
+                </label>
+                <div className="min-h-[44px] px-3.5 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl flex items-center justify-between text-xs">
+                  <span className="font-semibold text-slate-800 dark:text-slate-200 truncate">
+                    Font: <strong>{resolvePaperFontConfig(selectedFontMode, selectedSubject, fullPaperText).label}</strong>
+                  </span>
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ml-2 flex-shrink-0 ${
+                    resolvePaperFontConfig(selectedFontMode, selectedSubject, fullPaperText).isRTL
+                      ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+                      : "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300"
+                  }`}>
+                    {resolvePaperFontConfig(selectedFontMode, selectedSubject, fullPaperText).isRTL ? "RTL (Right to Left)" : "LTR (Left to Right)"}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -434,7 +575,14 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
                 {/* Header Config */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-600 dark:text-slate-300">Time Allowed</label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-600 dark:text-slate-300">Time Allowed</label>
+                      {examSchemeSpecs.found && (
+                        <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded">
+                          ⚡ Auto-deduced from scheme
+                        </span>
+                      )}
+                    </div>
                     <input
                       type="text"
                       value={timeAllowed}
@@ -444,7 +592,14 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-600 dark:text-slate-300">Total Marks</label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-600 dark:text-slate-300">Total Marks</label>
+                      {examSchemeSpecs.found && (
+                        <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded">
+                          ⚡ Auto-deduced ({examSchemeSpecs.totalMarks} Marks)
+                        </span>
+                      )}
+                    </div>
                     <input
                       type="text"
                       value={totalMarks}
@@ -453,6 +608,34 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
                       className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold"
                     />
                   </div>
+                </div>
+
+                {/* User Custom Input Instructions Box (Optional) */}
+                <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                      <span>General Exam Instructions</span>
+                      <span className="text-[11px] font-normal text-slate-400 dark:text-slate-500">
+                        (Optional — leave blank if not needed)
+                      </span>
+                    </label>
+                    {instructions && (
+                      <button
+                        type="button"
+                        onClick={() => setInstructions("")}
+                        className="text-[11px] text-rose-500 hover:text-rose-700 font-semibold"
+                      >
+                        Clear Instructions
+                      </button>
+                    )}
+                  </div>
+                  <textarea
+                    rows={2}
+                    value={instructions}
+                    onChange={(e) => setInstructions(e.target.value)}
+                    placeholder="Optional: Enter specific instructions for cadets (e.g., Attempt all questions. Mobile phones and calculators are strictly forbidden.)..."
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600 resize-y"
+                  />
                 </div>
 
                 {/* Section A: MCQs */}
@@ -643,18 +826,70 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
                   </div>
                 </div>
 
-                {/* Paper Preview Card */}
-                <div className="p-5 bg-slate-900 text-white rounded-2xl border border-slate-800 space-y-2">
-                  <div className="flex items-center justify-between text-xs font-bold text-blue-300">
-                    <span className="flex items-center gap-1.5">
+                {/* Paper Preview Card with Download Actions */}
+                <div className="p-5 bg-slate-900 text-white rounded-2xl border border-slate-800 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs font-bold text-blue-300">
+                    <div className="flex items-center gap-1.5">
                       <Sparkles className="w-4 h-4 text-amber-400" />
                       <span>Live Formatted Examination Sheet Output</span>
-                    </span>
-                    <span className="text-slate-400">Word Count: {fullPaperText.split(" ").length}</span>
+                      <span className="text-[10px] text-slate-400 font-normal ml-2">
+                        ({resolvePaperFontConfig(selectedFontMode, selectedSubject, fullPaperText).label})
+                      </span>
+                    </div>
+
+                    <div className="flex items-center space-x-2">
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadPDF({
+                          grade: selectedGrade,
+                          subject: selectedSubject,
+                          examId: selectedExam,
+                          teacherName: loggedTeacherName,
+                          textContent: fullPaperText,
+                          timeAllowed,
+                          totalMarks,
+                          instructions,
+                        })}
+                        disabled={downloadingPdf}
+                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all disabled:opacity-50"
+                        title="Download Draft as PDF"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>Download PDF</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadDOCX({
+                          grade: selectedGrade,
+                          subject: selectedSubject,
+                          examId: selectedExam,
+                          teacherName: loggedTeacherName,
+                          textContent: fullPaperText,
+                          timeAllowed,
+                          totalMarks,
+                          instructions,
+                        })}
+                        disabled={downloadingDocx}
+                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all disabled:opacity-50"
+                        title="Download Draft as Word (.docx)"
+                      >
+                        <FileDown className="w-3.5 h-3.5" />
+                        <span>Download Word (.docx)</span>
+                      </button>
+                    </div>
                   </div>
-                  <pre className="p-4 bg-slate-950 rounded-xl text-[11px] font-mono leading-relaxed overflow-x-auto text-slate-300 max-h-60 border border-slate-800">
+
+                  <div
+                    className="p-4 bg-slate-950 rounded-xl text-xs sm:text-sm leading-relaxed overflow-x-auto text-slate-200 max-h-72 border border-slate-800 whitespace-pre-wrap"
+                    style={{
+                      fontFamily: resolvePaperFontConfig(selectedFontMode, selectedSubject, fullPaperText).webFontFamily,
+                      direction: resolvePaperFontConfig(selectedFontMode, selectedSubject, fullPaperText).isRTL ? "rtl" : "ltr",
+                      textAlign: resolvePaperFontConfig(selectedFontMode, selectedSubject, fullPaperText).isRTL ? "right" : "left",
+                    }}
+                  >
                     {fullPaperText}
-                  </pre>
+                  </div>
                 </div>
               </div>
             ) : (
@@ -749,7 +984,31 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
                         </p>
                       </div>
 
-                      <div className="flex items-center space-x-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {paper.Text_Content && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleDownloadPDF(paper)}
+                              disabled={downloadingPdf}
+                              className="px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all disabled:opacity-50"
+                              title="Download Question Paper as PDF"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              <span>PDF</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDownloadDOCX(paper)}
+                              disabled={downloadingDocx}
+                              className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all disabled:opacity-50"
+                              title="Download Question Paper as Word (.docx)"
+                            >
+                              <FileDown className="w-3.5 h-3.5" />
+                              <span>Word (.docx)</span>
+                            </button>
+                          </>
+                        )}
                         {paper.File_URL && (
                           <a
                             href={paper.File_URL}
@@ -765,18 +1024,31 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
                     </div>
 
                     {/* Paper Content Preview for Faculty */}
-                    {paper.Text_Content && (
-                      <details className="text-xs pt-1">
-                        <summary className="font-bold text-blue-600 hover:text-blue-700 cursor-pointer py-1 select-none">
-                          View Submitted Question Paper Content
-                        </summary>
-                        <pre className="p-3 mt-1.5 bg-slate-900 text-slate-200 rounded-xl font-mono text-[11px] overflow-x-auto max-h-60 border border-slate-800 whitespace-pre-wrap leading-relaxed">
-                          {paper.Text_Content === "#ERROR!"
-                            ? "⚠️ Notice: This submission previously started with '=' which caused Google Sheets to evaluate it as a formula. Formula escaping is now active for all submissions. Please resubmit or preview subsequent submissions."
-                            : paper.Text_Content}
-                        </pre>
-                      </details>
-                    )}
+                    {paper.Text_Content && (() => {
+                      const paperFont = resolvePaperFontConfig("auto", paper.Subject, paper.Text_Content);
+                      return (
+                        <details className="text-xs pt-1">
+                          <summary className="font-bold text-blue-600 hover:text-blue-700 cursor-pointer py-1 select-none flex items-center justify-between">
+                            <span>View Submitted Question Paper Content</span>
+                            <span className="text-[10px] text-slate-400 font-normal">
+                              Font: {paperFont.label}
+                            </span>
+                          </summary>
+                          <pre
+                            className="p-3 mt-1.5 bg-slate-900 text-slate-200 rounded-xl text-xs sm:text-sm leading-relaxed overflow-x-auto max-h-64 border border-slate-800 whitespace-pre-wrap"
+                            style={{
+                              fontFamily: paperFont.webFontFamily,
+                              direction: paperFont.isRTL ? "rtl" : "ltr",
+                              textAlign: paperFont.isRTL ? "right" : "left",
+                            }}
+                          >
+                            {paper.Text_Content === "#ERROR!"
+                              ? "⚠️ Notice: This submission previously started with '=' which caused Google Sheets to evaluate it as a formula. Formula escaping is now active for all submissions. Please resubmit or preview subsequent submissions."
+                              : (cleanQuestionPaperContent(paper.Text_Content).join("\n") || paper.Text_Content)}
+                          </pre>
+                        </details>
+                      );
+                    })()}
 
                     {/* Admin Feedback Display if present */}
                     {paper.Admin_Feedback && (
@@ -831,32 +1103,71 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
                       </div>
                     </div>
 
-                    <span
-                      className={`px-2.5 py-1 rounded text-xs font-bold uppercase self-start sm:self-auto ${
-                        paper.Status === "Approved"
-                          ? "bg-emerald-100 text-emerald-800"
-                          : paper.Status === "Revision Needed"
-                          ? "bg-rose-100 text-rose-800"
-                          : "bg-amber-100 text-amber-800"
-                      }`}
-                    >
-                      {paper.Status || "Pending"}
-                    </span>
+                    <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+                      {paper.Text_Content && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleDownloadPDF(paper)}
+                            disabled={downloadingPdf}
+                            className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all disabled:opacity-50"
+                            title="Download Question Paper as PDF"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            <span>Download PDF</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDownloadDOCX(paper)}
+                            disabled={downloadingDocx}
+                            className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all disabled:opacity-50"
+                            title="Download Question Paper as Word (.docx)"
+                          >
+                            <FileDown className="w-3.5 h-3.5" />
+                            <span>Download Word (.docx)</span>
+                          </button>
+                        </>
+                      )}
+                      <span
+                        className={`px-2.5 py-1 rounded text-xs font-bold uppercase ${
+                          paper.Status === "Approved"
+                            ? "bg-emerald-100 text-emerald-800"
+                            : paper.Status === "Revision Needed"
+                            ? "bg-rose-100 text-rose-800"
+                            : "bg-amber-100 text-amber-800"
+                        }`}
+                      >
+                        {paper.Status || "Pending"}
+                      </span>
+                    </div>
                   </div>
 
                   {/* Paper Content Preview */}
-                  {paper.Text_Content && (
-                    <details className="text-xs">
-                      <summary className="font-bold text-blue-600 hover:text-blue-700 cursor-pointer py-1 select-none">
-                        View Submitted Question Paper Content
-                      </summary>
-                      <pre className="p-3 mt-1.5 bg-slate-900 text-slate-200 rounded-xl font-mono text-[11px] overflow-x-auto max-h-60 border border-slate-800 whitespace-pre-wrap leading-relaxed">
-                        {paper.Text_Content === "#ERROR!"
-                          ? "⚠️ Notice: This submission previously started with '=' which caused Google Sheets to evaluate it as a formula. Formula escaping is now active for all submissions. Please resubmit or preview subsequent submissions."
-                          : paper.Text_Content}
-                      </pre>
-                    </details>
-                  )}
+                  {paper.Text_Content && (() => {
+                    const paperFont = resolvePaperFontConfig("auto", paper.Subject, paper.Text_Content);
+                    return (
+                      <details className="text-xs">
+                        <summary className="font-bold text-blue-600 hover:text-blue-700 cursor-pointer py-1 select-none flex items-center justify-between">
+                          <span>View Submitted Question Paper Content</span>
+                          <span className="text-[10px] text-slate-500 font-normal">
+                            Font: {paperFont.label}
+                          </span>
+                        </summary>
+                        <pre
+                          className="p-3 mt-1.5 bg-slate-900 text-slate-200 rounded-xl text-xs sm:text-sm leading-relaxed overflow-x-auto max-h-64 border border-slate-800 whitespace-pre-wrap"
+                          style={{
+                            fontFamily: paperFont.webFontFamily,
+                            direction: paperFont.isRTL ? "rtl" : "ltr",
+                            textAlign: paperFont.isRTL ? "right" : "left",
+                          }}
+                        >
+                          {paper.Text_Content === "#ERROR!"
+                            ? "⚠️ Notice: This submission previously started with '=' which caused Google Sheets to evaluate it as a formula. Formula escaping is now active for all submissions. Please resubmit or preview subsequent submissions."
+                            : (cleanQuestionPaperContent(paper.Text_Content).join("\n") || paper.Text_Content)}
+                        </pre>
+                      </details>
+                    );
+                  })()}
 
                   {paper.File_URL && (
                     <div className="pt-1">

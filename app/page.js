@@ -151,64 +151,6 @@ export default function Home() {
           ))}
         </div>
 
-        {/* Tab Content Placeholder / Status Area */}
-        <div className="space-y-6">
-          {/* Phase 2 Authentication Verification Card (Hidden in Print) */}
-          <div className="no-print bg-white dark:bg-slate-900 rounded-2xl p-5 sm:p-6 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold">
-                  <ShieldCheck className="w-5 h-5" />
-                </div>
-                <div>
-                  <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                    <span>Phase 2 RBAC Active:</span>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 font-semibold">
-                      {isAdmin ? "Administrator" : perms?.isClassTeacher ? "Class Incharge" : "Subject Teacher"}
-                    </span>
-                  </h2>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Session persisted securely • Dynamic role-scoping verified across all modules
-                  </p>
-                </div>
-              </div>
-
-              <div className="hidden sm:flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Session Active</span>
-              </div>
-            </div>
-
-            {/* Scoped Details Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 text-xs space-y-1">
-                <span className="text-slate-400 font-medium">Logged Faculty:</span>
-                <p className="font-bold text-slate-900 dark:text-white truncate">{user?.Full_Name || user?.Name}</p>
-                <p className="text-[11px] text-slate-500 truncate">{user?.Email || user?.Teacher_ID}</p>
-              </div>
-
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 text-xs space-y-1">
-                <span className="text-slate-400 font-medium">Assigned Grades:</span>
-                <p className="font-bold text-slate-900 dark:text-white">
-                  {isAdmin ? "Global (All Grades)" : perms?.assignedGrades?.length > 0 ? perms.assignedGrades.join(", ") : "None"}
-                </p>
-                <p className="text-[11px] text-slate-500">
-                  {isAdmin ? "Unrestricted Access" : `${perms?.assignedGrades?.length || 0} classes unlocked`}
-                </p>
-              </div>
-
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 text-xs space-y-1">
-                <span className="text-slate-400 font-medium">Database Synced:</span>
-                <p className="font-bold text-slate-900 dark:text-white">
-                  {counts.students || 0} Cadets • {counts.marksLogs || 0} Scores
-                </p>
-                <p className="text-[11px] text-slate-500">
-                  Google Sheets API v4 (Edge Cache)
-                </p>
-              </div>
-            </div>
-          </div>
-
         {/* Tab Content Display */}
         <div className="space-y-6">
           {activeTab === "analytics" ? (
@@ -220,7 +162,6 @@ export default function Home() {
           ) : activeTab === "papers" ? (
             <QuestionPaperPortal db={db} onSubmissionComplete={() => fetchDatabase(true)} />
           ) : null}
-        </div>
         </div>
       </main>
 

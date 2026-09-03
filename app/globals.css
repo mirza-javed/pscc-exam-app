@@ -98,3 +98,49 @@
     break-after: page;
   }
 }
+
+/* Custom RTL Typography for Urdu, Sindhi, and Arabic */
+@font-face {
+  font-family: 'Jameel Noori Nastaleeq';
+  src: url('/fonts/Jameel_Noori_Nastaleeq_Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'MB Lateefi';
+  src: url('/fonts/MB-Lateefi-SKv2_0.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Amiri Quran';
+  src: url('/fonts/AmiriQuran-Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+.font-urdu {
+  font-family: 'Jameel Noori Nastaleeq', 'Noto Nastaliq Urdu', serif;
+  direction: rtl;
+  text-align: right;
+  line-height: 2.2;
+}
+
+.font-sindhi {
+  font-family: 'MB Lateefi', serif;
+  direction: rtl;
+  text-align: right;
+  line-height: 2.0;
+}
+
+.font-arabic {
+  font-family: 'Amiri Quran', serif;
+  direction: rtl;
+  text-align: right;
+  line-height: 2.2;
+}

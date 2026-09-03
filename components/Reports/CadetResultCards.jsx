@@ -20,6 +20,7 @@ import {
   Check,
   FileText,
   FileDown,
+  X,
 } from "lucide-react";
 import { buildClassAnalyticsData } from "@/lib/analytics";
 import { PSCC_LOGO_DATA_URI } from "@/lib/logo";
@@ -65,6 +66,58 @@ export default function CadetResultCards({ db = {} }) {
   const [viewMode, setViewMode] = useState("single"); // "single" | "batch"
   const [copied, setCopied] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+
+  // Search by Kit No or Name state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  // All students for global Kit No search
+  const allStudents = useMemo(() => db.Students || [], [db]);
+
+  // Suggestions matching query across all enrolled students
+  const filteredCadetSuggestions = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [];
+    return allStudents
+      .filter((s) => {
+        const kit = String(s.Kit_No || s.Student_ID || "").toLowerCase();
+        const name = String(s.Name || s.Full_Name || "").toLowerCase();
+        return kit.includes(q) || name.includes(q);
+      })
+      .slice(0, 10);
+  }, [allStudents, searchQuery]);
+
+  const handleSelectSearchedCadet = (cadet) => {
+    if (!cadet) return;
+    const g = String(cadet.Grade || "").trim();
+    const sec = String(cadet.Section || "").trim();
+    const kit = String(cadet.Kit_No || cadet.Student_ID || "").trim();
+
+    if (g) setSelectedGrade(g);
+    if (sec) setSelectedSection(sec);
+    if (kit) setSelectedKitNo(kit);
+
+    setSearchQuery(kit);
+    setShowSuggestions(false);
+    setViewMode("single");
+  };
+
+  const handleSearchKeyDown = (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (filteredCadetSuggestions.length > 0) {
+        handleSelectSearchedCadet(filteredCadetSuggestions[0]);
+      } else {
+        const q = searchQuery.trim().toLowerCase();
+        const found = allStudents.find(
+          (s) => String(s.Kit_No || s.Student_ID || "").trim().toLowerCase() === q
+        );
+        if (found) {
+          handleSelectSearchedCadet(found);
+        }
+      }
+    }
+  };
 
   // Available sections for chosen grade
   const availableSections = useMemo(() => {
@@ -247,8 +300,8 @@ export default function CadetResultCards({ db = {} }) {
           </div>
         </div>
 
-        {/* 3-Column Dropdowns */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+        {/* 4-Column Controls: Grade, Section, Exam Name, Search Cadet by Kit No */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <div className="space-y-1">
             <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
               Grade / Class
@@ -292,6 +345,94 @@ export default function CadetResultCards({ db = {} }) {
                 <option key={idx} value={e}>{e}</option>
               ))}
             </select>
+          </div>
+
+          {/* Quick Search Cadet by Kit No / Name */}
+          <div className="space-y-1 relative">
+            <div className="flex items-center justify-between">
+              <label className="block text-[11px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider flex items-center gap-1">
+                <Search className="w-3 h-3" />
+                <span>Search by Kit No</span>
+              </label>
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery("");
+                    setShowSuggestions(false);
+                  }}
+                  className="text-[10px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+            <div className="relative">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setShowSuggestions(true);
+                }}
+                onFocus={() => setShowSuggestions(true)}
+                onKeyDown={handleSearchKeyDown}
+                placeholder="Enter Kit No (e.g. 26001)..."
+                className="w-full min-h-[44px] pl-9 pr-8 py-2 bg-blue-50/40 dark:bg-slate-800/80 border border-blue-200 dark:border-blue-900/60 rounded-xl text-xs sm:text-sm font-bold text-slate-900 dark:text-white placeholder:text-slate-400 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-blue-600 focus:bg-white dark:focus:bg-slate-800"
+              />
+              <Search className="w-4 h-4 text-blue-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery("");
+                    setShowSuggestions(false);
+                  }}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                  aria-label="Clear search"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Dropdown Suggestions */}
+            {showSuggestions && filteredCadetSuggestions.length > 0 && (
+              <div className="absolute left-0 right-0 top-full mt-1.5 z-50 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl max-h-64 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
+                <div className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800/80 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  Matching Cadets (Click to View)
+                </div>
+                {filteredCadetSuggestions.map((cadet, idx) => {
+                  const kit = cadet.Kit_No || cadet.Student_ID;
+                  const isCurrent = kit === selectedKitNo;
+                  return (
+                    <button
+                      key={idx}
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        handleSelectSearchedCadet(cadet);
+                      }}
+                      className={`w-full px-3 py-2 text-left text-xs transition-colors flex items-center justify-between hover:bg-blue-50 dark:hover:bg-blue-950/40 ${
+                        isCurrent ? "bg-blue-50/80 dark:bg-blue-950/40 font-bold" : ""
+                      }`}
+                    >
+                      <div>
+                        <span className="font-mono font-bold text-blue-700 dark:text-blue-400">
+                          #{kit}
+                        </span>
+                        <span className="text-slate-800 dark:text-slate-200 ml-2">
+                          {cadet.Name || cadet.Full_Name}
+                        </span>
+                      </div>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-semibold">
+                        Grade {cadet.Grade}-{cadet.Section}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 
