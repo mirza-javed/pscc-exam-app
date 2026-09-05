@@ -11,6 +11,8 @@ import {
   ResponsiveContainer,
   Cell,
   CartesianGrid,
+  LabelList,
+  ReferenceLine,
 } from "recharts";
 import {
   BarChart3,
@@ -28,8 +30,50 @@ import {
   Filter,
   Eye,
   HelpCircle,
+  FileSpreadsheet,
+  FileText,
+  Printer,
 } from "lucide-react";
 import { buildClassAnalyticsData } from "@/lib/analytics";
+import { downloadMeritMasterSheetPDF } from "@/lib/pdfGenerator";
+
+// Custom data label renderer for Subject Average Performance Bar Chart
+const renderSubjectBarLabel = (props) => {
+  const { x, y, width, value } = props;
+  if (value === undefined || value === null) return null;
+  return (
+    <text
+      x={x + width / 2}
+      y={y - 6}
+      fill="#1e293b"
+      textAnchor="middle"
+      fontSize={10}
+      fontWeight={800}
+      className="fill-slate-800 dark:fill-slate-100"
+    >
+      {`${value}%`}
+    </text>
+  );
+};
+
+// Custom data label renderer for Letter Grade Distribution Bar Chart
+const renderGradeBarLabel = (props) => {
+  const { x, y, width, value } = props;
+  if (value === undefined || value === null || value === 0) return null;
+  return (
+    <text
+      x={x + width / 2}
+      y={y - 6}
+      fill="#1e293b"
+      textAnchor="middle"
+      fontSize={11}
+      fontWeight={800}
+      className="fill-slate-800 dark:fill-slate-100"
+    >
+      {value}
+    </text>
+  );
+};
 
 export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
   // Available exam options from exam_scheme or Grading_System
@@ -143,9 +187,14 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
     return list;
   }, [meritGrid, searchQuery, sortField, sortDirection, subjects]);
 
-  // Export Merit Sheet as Excel (.xlsx)
+  // Export Merit Sheet as Excel (.xlsx) - with Legal Landscape page setup
   const exportExcel = () => {
-    const rows = meritGrid.map((c) => {
+    const dataList =
+      displayMeritGrid.length < meritGrid.length && displayMeritGrid.length > 0
+        ? displayMeritGrid
+        : meritGrid;
+
+    const rows = dataList.map((c) => {
       const obj = {
         "Merit Rank": c.meritRank || "-",
         "Kit No": c.Kit_No,
@@ -172,12 +221,48 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
     });
 
     const worksheet = XLSX.utils.json_to_sheet(rows);
+    // Page setup: Legal Paper Size (paperSize: 5), Landscape / Horizontal orientation
+    worksheet["!pageSetup"] = { orientation: "landscape", paperSize: 5 };
+
+    // Auto-fit column widths
+    worksheet["!cols"] = [
+      { wch: 10 }, // Rank
+      { wch: 12 }, // Kit #
+      { wch: 28 }, // Name
+      { wch: 14 }, // Group
+      ...subjects.map((s) => ({ wch: Math.max(s.length + 4, 12) })),
+      { wch: 16 }, // Total Marks
+      { wch: 14 }, // Aggregate %
+      { wch: 10 }, // Grade
+      { wch: 12 }, // Status
+      { wch: 10 }, // Absences
+    ];
+
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Merit_Master_Sheet");
+    const safeExam = String(selectedExam || "All_Exams").replace(/[^a-zA-Z0-9]/g, "_");
     XLSX.writeFile(
       workbook,
-      `PSCC_Merit_Grade_${selectedGrade}_${selectedSection}_${selectedExam}.xlsx`
+      `PSCC_Merit_Master_Sheet_Grade_${selectedGrade}_${selectedSection}_${safeExam}.xlsx`
     );
+  };
+
+  // Export Merit Sheet as PDF (Legal Paper, Horizontal / Landscape)
+  const handleDownloadPDF = () => {
+    const dataList =
+      displayMeritGrid.length < meritGrid.length && displayMeritGrid.length > 0
+        ? displayMeritGrid
+        : meritGrid;
+
+    downloadMeritMasterSheetPDF({
+      meritGrid: dataList,
+      grade: selectedGrade,
+      section: selectedSection,
+      exam: selectedExam,
+      subjects,
+      subjectAverages,
+      kpis,
+    });
   };
 
   return (
@@ -195,14 +280,25 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
             </p>
           </div>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={handleDownloadPDF}
+              disabled={empty || meritGrid.length === 0}
+              className="px-3 py-1.5 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 text-xs font-bold transition-all flex items-center gap-1.5 disabled:opacity-50"
+              title="Download Section Merit Sheet as PDF (Horizontal / Legal Paper Setup)"
+            >
+              <FileText className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+              <span>Export PDF (Legal)</span>
+            </button>
+
             <button
               onClick={exportExcel}
-              disabled={empty}
-              className="px-3.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold transition-all flex items-center gap-1.5 disabled:opacity-50"
+              disabled={empty || meritGrid.length === 0}
+              className="px-3 py-1.5 rounded-xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 text-xs font-bold transition-all flex items-center gap-1.5 disabled:opacity-50"
+              title="Export Section Merit Sheet as Excel (.xlsx)"
             >
-              <Download className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              <span>Export Merit Sheet (.xlsx)</span>
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span>Export Excel (.xlsx)</span>
             </button>
           </div>
         </div>
@@ -355,20 +451,45 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             {/* Subject-Wise Average Performance Chart */}
             <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 sm:p-6 border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
-                  <h3 className="font-bold text-sm text-slate-900 dark:text-white">
-                    Subject Average Performance (%)
-                  </h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-sm text-slate-900 dark:text-white">
+                      Subject Average Performance (%)
+                    </h3>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-900">
+                      Mean: {kpis.classAverage}%
+                    </span>
+                  </div>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Comparative academic averages across subjects
+                    Comparative academic mean score % per subject with pass benchmark (40%)
                   </p>
                 </div>
               </div>
 
-              <div className="h-64 sm:h-72 w-full pt-2">
+              {/* Visual Performance Color-Coded Legend */}
+              <div className="flex flex-wrap items-center gap-2.5 pt-0.5 pb-1 text-[11px] font-bold border-b border-slate-100 dark:border-slate-800">
+                <span className="inline-flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                  ≥80% Distinction
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-blue-600 dark:text-blue-400">
+                  <span className="w-2.5 h-2.5 rounded-full bg-blue-600"></span>
+                  60–79% Proficient
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                  40–59% Passing
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-rose-600 dark:text-rose-400">
+                  <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+                  &lt;40% Below Pass
+                </span>
+              </div>
+
+              <div className="h-64 sm:h-72 w-full pt-1">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={subjectAverages} margin={{ top: 10, right: 10, left: -15, bottom: 20 }}>
+                  <BarChart data={subjectAverages} margin={{ top: 25, right: 10, left: -15, bottom: 25 }}>
                     <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
                     <XAxis
                       dataKey="subject"
@@ -376,9 +497,9 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
                       angle={-25}
                       textAnchor="end"
                       tick={{ fontSize: 10, fill: "#64748b" }}
-                      height={40}
+                      height={42}
                     />
-                    <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: "#64748b" }} />
+                    <YAxis domain={[0, 108]} tick={{ fontSize: 10, fill: "#64748b" }} />
                     <Tooltip
                       contentStyle={{
                         backgroundColor: "#0f172a",
@@ -388,11 +509,42 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
                         fontSize: "12px",
                       }}
                       formatter={(value, name, item) => [
-                        `${value}% (Score: ${item.payload.averageScore}/${item.payload.averageMax})`,
+                        `${value}% (Score: ${item.payload.averageScore}/${item.payload.averageMax}) • Pass Rate: ${item.payload.passRate}%`,
                         "Class Avg",
                       ]}
                     />
+                    <ReferenceLine
+                      y={40}
+                      stroke="#EF4444"
+                      strokeDasharray="4 4"
+                      strokeWidth={1.5}
+                      label={{
+                        value: "40% Pass Cutoff",
+                        position: "insideBottomLeft",
+                        fill: "#EF4444",
+                        fontSize: 9,
+                        fontWeight: 700,
+                      }}
+                    />
+                    <ReferenceLine
+                      y={kpis.classAverage}
+                      stroke="#2563EB"
+                      strokeDasharray="3 3"
+                      strokeWidth={1.5}
+                      label={{
+                        value: `Class Avg: ${kpis.classAverage}%`,
+                        position: "insideTopRight",
+                        fill: "#2563EB",
+                        fontSize: 9,
+                        fontWeight: 700,
+                      }}
+                    />
                     <Bar dataKey="averagePercentage" radius={[6, 6, 0, 0]}>
+                      <LabelList
+                        dataKey="averagePercentage"
+                        position="top"
+                        content={renderSubjectBarLabel}
+                      />
                       {subjectAverages.map((entry, index) => {
                         const val = entry.averagePercentage;
                         const fill =
@@ -413,26 +565,55 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
 
             {/* Grade Distribution Chart */}
             <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 sm:p-6 border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
-                  <h3 className="font-bold text-sm text-slate-900 dark:text-white">
-                    Overall Letter Grade Distribution
-                  </h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-sm text-slate-900 dark:text-white">
+                      Overall Letter Grade Distribution
+                    </h3>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900">
+                      {kpis.evaluatedCadets} Cadets Evaluated
+                    </span>
+                  </div>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Cadet frequency per grade bracket
+                    Cadet frequency per grade bracket (A++ through U)
                   </p>
                 </div>
               </div>
 
-              <div className="h-64 sm:h-72 w-full pt-2">
+              {/* Grade Band Legend */}
+              <div className="flex flex-wrap items-center gap-2.5 pt-0.5 pb-1 text-[11px] font-bold border-b border-slate-100 dark:border-slate-800">
+                <span className="inline-flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                  A++, A+, A (Honors)
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-blue-600 dark:text-blue-400">
+                  <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
+                  B++, B+, B (Standard)
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                  C, D (Passing)
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-rose-600 dark:text-rose-400">
+                  <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+                  E, U (Remedial)
+                </span>
+              </div>
+
+              <div className="h-64 sm:h-72 w-full pt-1">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={gradeDistribution} margin={{ top: 10, right: 10, left: -15, bottom: 20 }}>
+                  <BarChart data={gradeDistribution} margin={{ top: 25, right: 10, left: -15, bottom: 25 }}>
                     <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
                     <XAxis
                       dataKey="grade"
                       tick={{ fontSize: 11, fill: "#64748b", fontWeight: 700 }}
                     />
-                    <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: "#64748b" }} />
+                    <YAxis
+                      allowDecimals={false}
+                      domain={[0, (dataMax) => Math.max(dataMax + 2, 5)]}
+                      tick={{ fontSize: 10, fill: "#64748b" }}
+                    />
                     <Tooltip
                       contentStyle={{
                         backgroundColor: "#0f172a",
@@ -441,9 +622,19 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
                         color: "#fff",
                         fontSize: "12px",
                       }}
-                      formatter={(val) => [`${val} Cadet(s)`, "Count"]}
+                      formatter={(val, name, item) => {
+                        const pct =
+                          kpis.evaluatedCadets > 0
+                            ? ((val / kpis.evaluatedCadets) * 100).toFixed(1)
+                            : "0";
+                        return [
+                          `${val} Cadet(s) (${pct}% of section)`,
+                          `Grade ${item.payload.grade}`,
+                        ];
+                      }}
                     />
                     <Bar dataKey="count" radius={[6, 6, 0, 0]}>
+                      <LabelList dataKey="count" position="top" content={renderGradeBarLabel} />
                       {gradeDistribution.map((entry, index) => {
                         const g = entry.grade;
                         const fill =
@@ -555,25 +746,53 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
 
           {/* Section Merit Master Sheet Grid */}
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden space-y-3 p-4 sm:p-5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
               <div>
-                <h3 className="font-bold text-sm text-slate-900 dark:text-white">
-                  Section Merit Master Sheet (Pivot Grid)
-                </h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-sm sm:text-base text-slate-900 dark:text-white">
+                    Section Merit Master Sheet (Pivot Grid)
+                  </h3>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-900">
+                    {displayMeritGrid.length} of {meritGrid.length} Cadets
+                  </span>
+                </div>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Click any column header to sort • Frozen student demographics
+                  Click any column header to sort • Frozen student demographics • Export available in Legal Landscape (14&quot; × 8.5&quot;)
                 </p>
               </div>
 
-              <div className="relative w-full sm:w-64">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Filter student / kit no..."
-                  className="w-full pl-9 pr-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-600"
-                />
+              {/* Action Toolbar: Download PDF, Download Excel, Search Filter */}
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={handleDownloadPDF}
+                  disabled={empty || meritGrid.length === 0}
+                  className="px-3.5 py-1.5 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 disabled:opacity-50"
+                  title="Download official Section Merit Master Sheet as PDF (Horizontal / Legal Size Paper)"
+                >
+                  <FileText className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                  <span>Download PDF (Legal)</span>
+                </button>
+
+                <button
+                  onClick={exportExcel}
+                  disabled={empty || meritGrid.length === 0}
+                  className="px-3.5 py-1.5 rounded-xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 disabled:opacity-50"
+                  title="Download Section Merit Master Sheet as Excel Spreadsheet (.xlsx)"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span>Download Excel (.xlsx)</span>
+                </button>
+
+                <div className="relative w-full sm:w-56">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Filter student / kit no..."
+                    className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-600"
+                  />
+                </div>
               </div>
             </div>
 
