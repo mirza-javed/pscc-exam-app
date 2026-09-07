@@ -76,11 +76,19 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
 
   // Marks state: Map of { [Kit_No]: "45" | "Absent" | "" }
   const [marksState, setMarksState] = useState({});
+  // Track previous Submission_IDs from Google Sheets: { [Kit_No]: Submission_ID }
+  const [existingSubmissions, setExistingSubmissions] = useState({});
+  const [isEditMode, setIsEditMode] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null); // { type: 'success'|'error'|'info', message: string }
   const [uploadStatus, setUploadStatus] = useState(null);
 
   const inputRefs = useRef({});
+
+  // Detect whether previous marks already exist in DB for this selection
+  const hasExistingMarks = useMemo(() => {
+    return Object.keys(existingSubmissions).length > 0;
+  }, [existingSubmissions]);
 
   // Resolve available sections for selected grade
   const availableSections = useMemo(() => {
@@ -143,12 +151,54 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
     return filterStudentsBySubjectGroup(inSection, selectedGrade, selectedSubject);
   }, [db, selectedGrade, selectedSection, selectedSubject]);
 
-  // Load existing marks from Marks_Log and merge with local draft
+  // Load existing marks and previous Submission_IDs from Marks_Log and merge with local draft
   useEffect(() => {
     const marksLog = db.Marks_Log || [];
     const initialMap = {};
+    const subMap = {};
 
-    // 1. Populate from master Marks_Log
+    // 1. Populate from master Marks_Log and capture existing Submission_IDs
+    marksLog.forEach((row) => {
+      const rowExam = String(row.Exam_ID || "").trim();
+      const rowSubj = String(row.Subject || "").trim().toLowerCase();
+      const sId = String(row.Kit_No || row.Student_ID || "").trim();
+
+      if (
+        (rowExam === selectedExam || !selectedExam) &&
+        rowSubj === String(selectedSubject).trim().toLowerCase() &&
+        sId
+      ) {
+        initialMap[sId] = String(row.Marks_Obtained || "").trim();
+        if (row.Submission_ID) {
+          subMap[sId] = String(row.Submission_ID).trim();
+        }
+      }
+    });
+
+    setExistingSubmissions(subMap);
+    const hasPriorMarks = Object.keys(subMap).length > 0;
+    setIsEditMode(!hasPriorMarks);
+
+    // 2. Check localStorage draft for unsaved work
+    const draftKey = `draft_${selectedExam}_${selectedGrade}_${selectedSection}_${selectedSubject}`;
+    try {
+      const savedDraft = localStorage.getItem(draftKey);
+      if (savedDraft) {
+        const parsed = JSON.parse(savedDraft);
+        Object.assign(initialMap, parsed);
+        setIsEditMode(true);
+      }
+    } catch (e) {
+      console.warn("Could not read draft", e);
+    }
+
+    setMarksState(initialMap);
+  }, [selectedExam, selectedGrade, selectedSection, selectedSubject, db]);
+
+  // Cancel edits and restore original saved database marks
+  const handleCancelEdit = () => {
+    const marksLog = db.Marks_Log || [];
+    const initialMap = {};
     marksLog.forEach((row) => {
       const rowExam = String(row.Exam_ID || "").trim();
       const rowSubj = String(row.Subject || "").trim().toLowerCase();
@@ -163,20 +213,18 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
       }
     });
 
-    // 2. Check localStorage draft for unsaved work
     const draftKey = `draft_${selectedExam}_${selectedGrade}_${selectedSection}_${selectedSubject}`;
     try {
-      const savedDraft = localStorage.getItem(draftKey);
-      if (savedDraft) {
-        const parsed = JSON.parse(savedDraft);
-        Object.assign(initialMap, parsed);
-      }
-    } catch (e) {
-      console.warn("Could not read draft", e);
-    }
+      localStorage.removeItem(draftKey);
+    } catch (e) {}
 
     setMarksState(initialMap);
-  }, [selectedExam, selectedGrade, selectedSection, selectedSubject, db]);
+    setIsEditMode(false);
+    setToast({
+      type: "info",
+      message: "Edit cancelled. Restored previously saved marks from Master Database.",
+    });
+  };
 
   // Save changes to localStorage draft on every modification
   const updateScore = (kitNo, val) => {
@@ -350,7 +398,7 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
     );
   };
 
-  // Save marks to Google Sheets via /api/marks
+  // Save or update marks to Google Sheets via /api/marks
   const handleSaveMarks = async () => {
     const records = [];
     enrolledStudents.forEach((std) => {
@@ -358,6 +406,7 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
       const val = marksState[id];
       if (val !== undefined && String(val).trim() !== "") {
         records.push({
+          Submission_ID: existingSubmissions[id] || null, // PRESERVES previous Submission_ID!
           Kit_No: id,
           Exam_ID: selectedExam,
           Subject: selectedSubject,
@@ -410,9 +459,15 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
         localStorage.removeItem(draftKey);
       } catch (e) {}
 
+      setIsEditMode(false);
+
       setToast({
         type: "success",
-        message: `Saved ${data.count} student marks for ${selectedSubject} to Google Sheets!`,
+        message:
+          data.message ||
+          (hasExistingMarks
+            ? `Successfully updated ${data.count} student marks in the Master Database (previous Submission IDs preserved)!`
+            : `Saved ${data.count} student marks for ${selectedSubject} to Google Sheets!`),
       });
 
       if (onMarksSaved) onMarksSaved();
@@ -466,7 +521,22 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
             </p>
           </div>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {hasExistingMarks && (
+              <button
+                type="button"
+                onClick={() => setIsEditMode(!isEditMode)}
+                className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm ${
+                  isEditMode
+                    ? "bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800"
+                    : "bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-900"
+                }`}
+                title={isEditMode ? "Exit edit mode" : "Enable editing for existing marks"}
+              >
+                <Edit3 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                <span>{isEditMode ? "Editing Active" : "Edit Marks"}</span>
+              </button>
+            )}
             <button
               onClick={() => setShowUploader(!showUploader)}
               className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold transition-all flex items-center gap-1.5"
@@ -651,6 +721,59 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
         </div>
       </div>
 
+      {/* Existing Submission / Edit Mode Notification Banner */}
+      {hasExistingMarks && (
+        <div
+          className={`p-3.5 sm:p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs transition-all ${
+            isEditMode
+              ? "bg-amber-50/80 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 shadow-sm"
+              : "bg-blue-50/70 dark:bg-blue-950/30 border-blue-200 dark:border-blue-900 text-blue-900 dark:text-blue-200"
+          }`}
+        >
+          <div className="flex items-center gap-2.5">
+            {isEditMode ? (
+              <Edit3 className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 animate-pulse" />
+            ) : (
+              <CheckCircle2 className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+            )}
+            <div>
+              <div className="font-bold text-xs sm:text-sm">
+                {isEditMode
+                  ? "✏️ Edit Mode Active — Modifying Existing Submission"
+                  : `Existing Submission Found (${Object.keys(existingSubmissions).length} Cadets Recorded)`}
+              </div>
+              <p className="text-[11px] opacity-80 mt-0.5">
+                {isEditMode
+                  ? "Changes will update the exact rows under their original Submission IDs in Google Sheets (no duplicates)."
+                  : "Marks are currently saved in the Master Database. Click 'Edit Marks' below or in the toolbar to modify scores."}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-end sm:self-auto">
+            {isEditMode ? (
+              <button
+                type="button"
+                onClick={handleCancelEdit}
+                className="px-3.5 py-1.5 rounded-xl border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-900 hover:bg-amber-100 dark:hover:bg-slate-800 text-amber-900 dark:text-amber-200 font-bold text-xs shadow-sm flex items-center gap-1.5 transition-all"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>Cancel Edit</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsEditMode(true)}
+                className="px-4 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 transition-all"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+                <span>Edit Marks</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Main Student Entry Table */}
       {filteredStudents.length === 0 ? (
         <div className="bg-white dark:bg-slate-900 rounded-2xl p-12 text-center border border-slate-200 dark:border-slate-800 space-y-2">
@@ -745,6 +868,11 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
                             value={isAbsent ? "AB" : currentVal}
                             onChange={(e) => updateScore(kitNo, e.target.value)}
                             onKeyDown={(e) => handleKeyDown(e, index)}
+                            onClick={() => {
+                              if (hasExistingMarks && !isEditMode) {
+                                setIsEditMode(true);
+                              }
+                            }}
                             placeholder="0.0"
                             className={`w-full min-h-[44px] px-3 py-1.5 text-center rounded-xl font-bold text-sm tabular-nums transition-all focus:outline-none focus:ring-2 ${
                               isAbsent
@@ -803,7 +931,22 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
           <span>Subject: <strong>{selectedSubject}</strong></span>
         </div>
 
-        <div className="flex items-center space-x-2 w-full sm:w-auto">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          {hasExistingMarks && (
+            <button
+              type="button"
+              onClick={() => setIsEditMode(!isEditMode)}
+              className={`min-h-[48px] px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm border transition-all flex items-center justify-center space-x-1.5 ${
+                isEditMode
+                  ? "bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800"
+                  : "bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700"
+              }`}
+            >
+              <Edit3 className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+              <span>{isEditMode ? "Exit Edit Mode" : "Edit Marks"}</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={handleSaveMarks}
@@ -815,7 +958,15 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
             ) : (
               <Save className="w-4 h-4" />
             )}
-            <span>{saving ? "Syncing to Google Sheets..." : `Save Marks (${stats.entered}/${stats.total})`}</span>
+            <span>
+              {saving
+                ? hasExistingMarks
+                  ? "Updating Google Sheets..."
+                  : "Syncing to Google Sheets..."
+                : hasExistingMarks
+                ? `Update Marks (${stats.entered}/${stats.total})`
+                : `Save Marks (${stats.entered}/${stats.total})`}
+            </span>
           </button>
         </div>
       </div>

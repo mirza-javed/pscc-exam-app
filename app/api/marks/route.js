@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { appendMarksLog } from "@/lib/googleSheets";
+import { saveOrUpdateMarksLog } from "@/lib/googleSheets";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +17,7 @@ export async function POST(request) {
 
     const absentKeywords = new Set(["ab", "a", "absent", "a/b", "n/a", "na", "-"]);
 
-    // Normalize records
+    // Normalize records while preserving original Submission_ID if present
     const normalized = [];
     for (const item of records) {
       const raw = String(item.Marks_Obtained !== undefined ? item.Marks_Obtained : "").trim();
@@ -36,7 +36,7 @@ export async function POST(request) {
       }
 
       normalized.push({
-        Submission_ID: `SUB-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
+        Submission_ID: String(item.Submission_ID || "").trim(),
         Kit_No: String(item.Kit_No || item.Student_ID || "").trim(),
         Exam_ID: String(examId || item.Exam_ID || "").trim(),
         Subject: String(subject || item.Subject || "").trim(),
@@ -51,12 +51,21 @@ export async function POST(request) {
       );
     }
 
-    const savedCount = await appendMarksLog(normalized);
+    const result = await saveOrUpdateMarksLog(normalized);
+
+    const message =
+      result.updatedCount > 0 && result.insertedCount > 0
+        ? `Successfully updated ${result.updatedCount} marks and added ${result.insertedCount} new entries in Master Database.`
+        : result.updatedCount > 0
+        ? `Successfully updated ${result.updatedCount} student marks in the Master Database (previous Submission IDs preserved).`
+        : `Successfully recorded ${result.insertedCount} student marks to the Master Database.`;
 
     return NextResponse.json({
       success: true,
-      count: savedCount,
-      message: `Successfully recorded ${savedCount} student marks to the Master Database.`,
+      count: result.totalCount,
+      updatedCount: result.updatedCount,
+      insertedCount: result.insertedCount,
+      message,
     });
   } catch (error) {
     console.error("Marks save error:", error);
