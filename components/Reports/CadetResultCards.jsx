@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { buildClassAnalyticsData } from "@/lib/analytics";
 import { PSCC_LOGO_DATA_URI } from "@/lib/logo";
+import { filterSubjectsForCadet } from "@/lib/models";
 import {
   downloadCadetResultCardPDF,
   downloadBatchResultCardsPDF,
@@ -227,7 +228,7 @@ export default function CadetResultCards({ db = {} }) {
   // Copy WhatsApp / SMS Notification text to clipboard
   const handleShareMessage = () => {
     if (!currentCadet) return;
-    const text = `*PAKISTAN STEEL CADET COLLEGE KARACHI*\n*Academic Evaluation Summary*\n------------------------------------\nCadet Name: ${currentCadet.Name || ""}\nKit Number: ${currentCadet.Kit_No || ""}\nClass: Grade ${selectedGrade}-${selectedSection} (${currentCadet.Group || "General"})\nExamination: ${selectedExam}\n------------------------------------\nTotal Marks: ${currentCadet.totalObtained} / ${currentCadet.totalMaxMarks}\nAggregate: ${currentCadet.aggregatePct}%\nLetter Grade: ${currentCadet.letterGrade}\nSection Merit Rank: #${currentCadet.meritRank} of ${meritGrid.length}\nResult Status: ${currentCadet.passStatus}\n------------------------------------\nRemarks: ${currentCadet.remarks}\nController of Examinations, PSCC Karachi.`;
+    const text = `*PAKISTAN STEEL CADET COLLEGE KARACHI*\n*Academic Evaluation Summary*\n------------------------------------\nCadet Name: ${currentCadet.Name || ""}\nKit Number: ${currentCadet.Kit_No || ""}\nClass: Grade ${selectedGrade}-${selectedSection} (${currentCadet.Group || "General"})\nExamination: ${selectedExam}\n------------------------------------\nTotal Marks: ${currentCadet.totalObtained} / ${currentCadet.totalMaxMarks}\nAggregate: ${currentCadet.aggregatePct}%\nGrade: ${currentCadet.letterGrade}\nSection Merit Rank: #${currentCadet.meritRank} of ${meritGrid.length}\nResult Status: ${currentCadet.passStatus}\n------------------------------------\nRemarks: ${currentCadet.remarks}\nController of Examinations, PSCC Karachi.`;
 
     if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(() => {
@@ -237,10 +238,11 @@ export default function CadetResultCards({ db = {} }) {
     }
   };
 
-  // Export Single Result Card to Excel
+  // Export Single Result Card to Excel (filtered to cadet's academic group)
   const exportSingleExcel = () => {
     if (!currentCadet) return;
-    const rows = subjects.map((subj) => {
+    const cadetSubjects = filterSubjectsForCadet(subjects, currentCadet, selectedGrade);
+    const rows = cadetSubjects.map((subj) => {
       const scoreObj = currentCadet.scores?.[subj];
       return {
         Subject: subj,
@@ -627,6 +629,7 @@ function SingleCardView({
   if (!cadet) return null;
 
   const isPass = cadet.isPassed !== false && String(cadet.passStatus || "").toUpperCase() === "PASS";
+  const cadetSubjects = filterSubjectsForCadet(subjects, cadet, grade);
 
   return (
     <div className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl p-6 sm:p-8 max-w-4xl mx-auto space-y-6 print:border-none print:shadow-none print:p-0 print:m-0 print:text-black">
@@ -696,9 +699,9 @@ function SingleCardView({
           </p>
         </div>
 
-        {/* Letter Grade */}
+        {/* Grade */}
         <div className="p-3 rounded-xl bg-slate-100 dark:bg-slate-800 print:bg-gray-100 border border-slate-200 dark:border-slate-700 print:border-gray-300">
-          <span className="text-[10px] uppercase font-bold text-slate-500 print:text-gray-600">Letter Grade</span>
+          <span className="text-[10px] uppercase font-bold text-slate-500 print:text-gray-600">Grade</span>
           <p className="text-base sm:text-lg font-black text-slate-900 dark:text-white print:text-black">
             {cadet.letterGrade}
           </p>
@@ -741,7 +744,7 @@ function SingleCardView({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800 print:divide-gray-300 font-medium">
-            {subjects.map((subj, i) => {
+            {cadetSubjects.map((subj, i) => {
               const scoreObj = cadet.scores?.[subj];
               const isAbsent = scoreObj?.isAbsent;
               const hasScore = scoreObj && !isAbsent;
