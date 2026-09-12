@@ -19,7 +19,7 @@ def render(db: dict, perm: dict) -> None:
                 📝 Question Paper Submission Portal
             </h1>
             <p style="margin: 6px 0 0 0; opacity: 0.9; font-size: 14px;">
-                Submit examination papers directly, upload external documents, and manage approval workflows for PS Cadet College Karachi.
+                Submit examination papers directly, upload external documents, and manage approval workflows for Pakistan Steel Cadet College Karachi.
             </p>
         </div>
     """, unsafe_allow_html=True)
@@ -208,7 +208,7 @@ def render(db: dict, perm: dict) -> None:
 
                         # Generate PDF
                         pdf_bytes = generate_question_paper_pdf(
-                            school_name="PS Cadet College Karachi",
+                            school_name="Pakistan Steel Cadet College Karachi",
                             exam_term=selected_exam,
                             grade=selected_grade,
                             subject=selected_subject,
@@ -229,7 +229,7 @@ def render(db: dict, perm: dict) -> None:
 
                         # Generate Editable Word Document (.docx)
                         docx_bytes = generate_question_paper_docx(
-                            school_name="PS Cadet College Karachi",
+                            school_name="Pakistan Steel Cadet College Karachi",
                             exam_term=selected_exam,
                             grade=selected_grade,
                             subject=selected_subject,

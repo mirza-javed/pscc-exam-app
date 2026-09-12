@@ -44,15 +44,15 @@ export default function Navbar({ staffList = [], db = {}, onRefresh, refreshing 
         <div className="flex items-center space-x-3">
           <img
             src="/pscc-logo.jpg"
-            alt="PS Cadet College Karachi Logo"
-            className="w-10 h-10 object-contain rounded-xl shadow-md border border-slate-200 dark:border-slate-700 bg-white"
+            alt="Pakistan Steel Cadet College Karachi Logo"
+            className="w-10 h-10 object-contain rounded-xl shadow-md border border-slate-200 dark:border-slate-700 bg-white flex-shrink-0"
           />
           <div>
             <div className="flex items-center space-x-2">
-              <span className="font-bold text-sm sm:text-base text-slate-900 dark:text-white tracking-tight">
-                PS Cadet College
+              <span className="font-bold text-xs sm:text-base text-slate-900 dark:text-white tracking-tight leading-tight">
+                Pakistan Steel Cadet College Karachi
               </span>
-              <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+              <span className="hidden md:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
                 Exam Portal
               </span>
             </div>

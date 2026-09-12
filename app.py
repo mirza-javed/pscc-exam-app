@@ -8,7 +8,7 @@ from src.components.header import render_hero_header
 from src.pages import analytics, data_entry, reports, question_paper_submission
 
 st.set_page_config(
-    page_title="PS Cadet College Karachi Exam Portal",
+    page_title="Pakistan Steel Cadet College Karachi Exam Portal",
     page_icon="🎓",
     layout="wide",
     initial_sidebar_state="expanded"

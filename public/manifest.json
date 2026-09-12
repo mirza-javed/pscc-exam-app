@@ -1,7 +1,7 @@
 {
-  "name": "PS Cadet College Karachi Exam Portal",
+  "name": "Pakistan Steel Cadet College Karachi Exam Portal",
   "short_name": "PSCC Exams",
-  "description": "Mobile-First Academic & Examination Management Portal for PS Cadet College Karachi",
+  "description": "Mobile-First Academic & Examination Management Portal for Pakistan Steel Cadet College Karachi",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0F172A",

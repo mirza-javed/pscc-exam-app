@@ -45,8 +45,8 @@ def login_screen(db):
 
         st.markdown(textwrap.dedent("""
         <div class="portal-footer">
-            \U0001F512 Access is restricted to registered staff of PS Cadet College Karachi.<br>
+            \U0001F512 Access is restricted to registered staff of Pakistan Steel Cadet College Karachi.<br>
             Trouble signing in? Contact the Examination Office.<br>
-            &copy; PS Cadet College Karachi &middot; Examination Portal
+            &copy; Pakistan Steel Cadet College Karachi &middot; Examination Portal
         </div>
         """), unsafe_allow_html=True)

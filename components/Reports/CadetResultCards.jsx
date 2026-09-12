@@ -28,6 +28,7 @@ import { filterSubjectsForCadet } from "@/lib/models";
 import {
   downloadCadetResultCardPDF,
   downloadBatchResultCardsPDF,
+  generateCadetResultCardPDFBlob,
 } from "@/lib/pdfGenerator";
 
 export default function CadetResultCards({ db = {} }) {
@@ -67,6 +68,8 @@ export default function CadetResultCards({ db = {} }) {
   const [viewMode, setViewMode] = useState("single"); // "single" | "batch"
   const [copied, setCopied] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [sharingWhatsApp, setSharingWhatsApp] = useState(false);
+  const [toastMessage, setToastMessage] = useState(null);
 
   // Search by Kit No or Name state
   const [searchQuery, setSearchQuery] = useState("");
@@ -225,16 +228,79 @@ export default function CadetResultCards({ db = {} }) {
     }
   };
 
-  // Copy WhatsApp / SMS Notification text to clipboard
-  const handleShareMessage = () => {
+  // Send Official Cadet Result Card PDF via WhatsApp
+  const handleSendPDFViaWhatsApp = async () => {
     if (!currentCadet) return;
-    const text = `*PAKISTAN STEEL CADET COLLEGE KARACHI*\n*Academic Evaluation Summary*\n------------------------------------\nCadet Name: ${currentCadet.Name || ""}\nKit Number: ${currentCadet.Kit_No || ""}\nClass: Grade ${selectedGrade}-${selectedSection} (${currentCadet.Group || "General"})\nExamination: ${selectedExam}\n------------------------------------\nTotal Marks: ${currentCadet.totalObtained} / ${currentCadet.totalMaxMarks}\nAggregate: ${currentCadet.aggregatePct}%\nGrade: ${currentCadet.letterGrade}\nSection Merit Rank: #${currentCadet.meritRank} of ${meritGrid.length}\nResult Status: ${currentCadet.passStatus}\n------------------------------------\nRemarks: ${currentCadet.remarks}\nController of Examinations, PSCC Karachi.`;
+    try {
+      setSharingWhatsApp(true);
 
-    if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 3000);
-      }).catch((e) => console.error("Clipboard copy failed:", e));
+      const text = `*PAKISTAN STEEL CADET COLLEGE KARACHI*\n*Academic Evaluation Result Card*\n------------------------------------\nCadet Name: ${currentCadet.Name || ""}\nKit Number: ${currentCadet.Kit_No || ""}\nClass: Grade ${selectedGrade}-${selectedSection} (${currentCadet.Group || "General"})\nExamination: ${selectedExam}\n------------------------------------\nTotal Marks: ${currentCadet.totalObtained} / ${currentCadet.totalMaxMarks}\nAggregate: ${currentCadet.aggregatePct}%\nGrade: ${currentCadet.letterGrade}\nSection Merit Rank: #${currentCadet.meritRank} of ${meritGrid.length}\nResult Status: ${currentCadet.passStatus}\n------------------------------------\nRemarks: ${currentCadet.remarks || "Satisfactory"}\nController of Examinations, PSCC Karachi.`;
+
+      const safeName = String(currentCadet.Name || "Cadet").replace(/[^a-zA-Z0-9]/g, "_");
+      const fileName = `PSCC_Result_Card_${currentCadet.Kit_No}_${safeName}.pdf`;
+
+      const blob = generateCadetResultCardPDFBlob({
+        cadet: currentCadet,
+        grade: selectedGrade,
+        section: selectedSection,
+        exam: selectedExam,
+        subjects,
+        totalCadets: meritGrid.length,
+      });
+
+      let sharedDirectly = false;
+
+      // 1. Try modern Web Share API with File attachment (Supported on mobile Chrome, Safari, etc.)
+      if (blob && typeof navigator !== "undefined" && typeof navigator.share === "function") {
+        try {
+          const file = new File([blob], fileName, { type: "application/pdf" });
+          if (typeof navigator.canShare === "function" && navigator.canShare({ files: [file] })) {
+            await navigator.share({
+              title: `PSCC Result Card - ${currentCadet.Name}`,
+              text,
+              files: [file],
+            });
+            sharedDirectly = true;
+          }
+        } catch (shareErr) {
+          if (shareErr.name === "AbortError") {
+            // User cancelled native share sheet
+            return;
+          }
+          console.warn("Native file sharing failed, falling back to WhatsApp Web:", shareErr);
+        }
+      }
+
+      // 2. Desktop WhatsApp Web / Direct Link Fallback:
+      // Browser protocols cannot auto-attach local files into WhatsApp Web.
+      // Automatically download the official PDF and open WhatsApp Web with pre-formatted academic summary.
+      if (!sharedDirectly) {
+        downloadCadetResultCardPDF({
+          cadet: currentCadet,
+          grade: selectedGrade,
+          section: selectedSection,
+          exam: selectedExam,
+          subjects,
+          totalCadets: meritGrid.length,
+        });
+
+        const waUrl = `https://web.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+        window.open(waUrl, "_blank", "noopener,noreferrer");
+
+        setToastMessage({
+          type: "success",
+          message: `Official PDF downloaded (${fileName})! WhatsApp Web opened — simply drag & drop the PDF into your chat.`,
+        });
+        setTimeout(() => setToastMessage(null), 8000);
+      }
+    } catch (err) {
+      console.error("WhatsApp share failed:", err);
+      setToastMessage({
+        type: "error",
+        message: "Failed to share via WhatsApp: " + (err.message || "Unknown error"),
+      });
+    } finally {
+      setSharingWhatsApp(false);
     }
   };
 
@@ -264,6 +330,34 @@ export default function CadetResultCards({ db = {} }) {
 
   return (
     <div className="space-y-6">
+      {/* Toast Notification Banner */}
+      {toastMessage && (
+        <div
+          className={`no-print p-4 rounded-xl flex items-center justify-between shadow-lg text-xs sm:text-sm font-semibold transition-all ${
+            toastMessage.type === "success"
+              ? "bg-emerald-600 text-white"
+              : toastMessage.type === "error"
+              ? "bg-rose-600 text-white"
+              : "bg-blue-600 text-white"
+          }`}
+        >
+          <div className="flex items-center space-x-2">
+            {toastMessage.type === "success" ? (
+              <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
+            ) : (
+              <XCircle className="w-5 h-5 flex-shrink-0" />
+            )}
+            <span>{toastMessage.message}</span>
+          </div>
+          <button
+            onClick={() => setToastMessage(null)}
+            className="p-1 rounded-md hover:bg-white/20 transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Top Filter & View Mode Controls (Hidden in Print) */}
       <div className="no-print bg-white dark:bg-slate-900 rounded-2xl p-4 sm:p-5 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
@@ -513,14 +607,17 @@ export default function CadetResultCards({ db = {} }) {
                   <span>{downloadingPdf ? "Generating PDF..." : "Download as PDF"}</span>
                 </button>
 
-                {/* 2. WhatsApp Copy */}
+                {/* 2. Send PDF via WhatsApp */}
                 <button
-                  onClick={handleShareMessage}
-                  className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 border border-slate-700"
-                  title="Copy WhatsApp/SMS formatted report"
+                  onClick={handleSendPDFViaWhatsApp}
+                  disabled={sharingWhatsApp || !currentCadet}
+                  className="px-3.5 py-2 bg-[#25D366] hover:bg-[#20BD5A] text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-md active:scale-95 disabled:opacity-50"
+                  title="Send official PDF Result Card via WhatsApp"
                 >
-                  {copied ? <Check className="w-3.5 h-3.5" /> : <MessageSquare className="w-3.5 h-3.5" />}
-                  <span>{copied ? "Copied!" : "WhatsApp Copy"}</span>
+                  <svg className="w-4 h-4 fill-current flex-shrink-0" viewBox="0 0 24 24">
+                    <path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.582 2.128 2.182-.573c.978.58 1.911.928 3.145.929 3.178 0 5.767-2.587 5.768-5.766.001-3.187-2.575-5.77-5.764-5.771zm3.392 8.244c-.144.405-.837.774-1.17.824-.299.045-.677.063-1.092-.069-.252-.08-.575-.187-.988-.365-1.739-.751-2.874-2.502-2.961-2.617-.087-.116-.708-.94-.708-1.793s.448-1.273.607-1.446c.159-.173.346-.217.462-.217l.332.006c.106.005.249-.04.39.298.144.347.491 1.2.534 1.287.043.087.072.188.014.304-.058.116-.087.188-.173.289l-.26.304c-.087.086-.177.18-.076.354.101.174.449.741.964 1.201.662.591 1.221.774 1.394.86s.275.072.376-.043c.101-.116.433-.506.549-.68.116-.173.231-.145.39-.087s1.011.477 1.184.564.289.13.332.202c.045.072.045.419-.099.824zm-3.423-14.416c-6.627 0-12 5.373-12 12 0 2.159.57 4.192 1.571 5.952l-1.579 5.848 6.009-1.576c1.71 1.002 3.707 1.576 5.849 1.576 6.627 0 12-5.373 12-12s-5.373-12-12-12zm0 22c-1.859 0-3.608-.508-5.12-1.394l-.367-.215-3.568.936.952-3.527-.236-.375c-.966-1.534-1.476-3.315-1.476-5.175 0-5.385 4.381-9.766 9.765-9.766 5.385 0 9.766 4.381 9.766 9.766 0 5.385-4.381 9.766-9.766 9.766z" />
+                  </svg>
+                  <span>{sharingWhatsApp ? "Sharing..." : "Send via WhatsApp"}</span>
                 </button>
 
                 {/* 3. Excel Download */}
@@ -638,7 +735,7 @@ function SingleCardView({
         <div className="flex items-center justify-center space-x-4">
           <img
             src={PSCC_LOGO_DATA_URI}
-            alt="PS Cadet College Logo"
+            alt="Pakistan Steel Cadet College Karachi Logo"
             className="w-16 h-16 object-contain rounded-full shadow-sm"
           />
           <div className="text-left">

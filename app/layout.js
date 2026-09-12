@@ -9,7 +9,7 @@ export const viewport = {
 };
 
 export const metadata = {
-  title: "PS Cadet College Karachi — Examination Portal",
+  title: "Pakistan Steel Cadet College Karachi — Examination Portal",
   description: "Mobile-First Academic & Examination Management Portal for Pakistan Steel Cadet College Karachi",
   manifest: "/manifest.json",
   icons: {

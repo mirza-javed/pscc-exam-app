@@ -104,7 +104,7 @@ export default function LoginScreen({ staffList = [], db = {} }) {
             />
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-            PS Cadet College Karachi
+            Pakistan Steel Cadet College Karachi
           </h1>
           <p className="text-xs sm:text-sm font-medium text-slate-500 dark:text-slate-400">
             Academic Examination & Evaluation Portal

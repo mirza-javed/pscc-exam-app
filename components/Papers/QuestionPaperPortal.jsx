@@ -24,6 +24,7 @@ import {
   Check,
   FileDown,
   Type,
+  Wand2,
 } from "lucide-react";
 import { useAuthStore } from "@/lib/store";
 import { getSubjectsForGrade, resolveExamSchemeSpecs } from "@/lib/models";
@@ -34,6 +35,42 @@ import {
   resolvePaperFontConfig,
   cleanQuestionPaperContent,
 } from "@/lib/paperDocumentGenerator";
+
+export const SCIENTIFIC_SYMBOLS = {
+  physics: {
+    label: "⚡ Physics & Greek",
+    symbols: [
+      "Ω", "μ", "λ", "θ", "α", "β", "γ", "Δ", "π", "ρ", "σ", "τ", "ω", "ε", "η", "φ", "ψ",
+      "vᵢ", "v_f", "m/s²", "m/s", "kg", "N", "J", "W", "Pa", "Hz", "T", "V", "A", "C"
+    ],
+  },
+  chemistry: {
+    label: "🧪 Chemistry & Reactions",
+    symbols: [
+      "→", "⇌", "↑", "↓", "°C", "K", "ΔH", "(s)", "(l)", "(g)", "(aq)",
+      "H₂O", "CO₂", "H₂SO₄", "NaCl", "CaCO₃", "HCl", "NH₃", "O₂", "N₂", "CH₄",
+      "Fe²⁺", "Fe³⁺", "Al³⁺", "SO₄²⁻", "OH⁻", "H⁺", "NO₃⁻"
+    ],
+  },
+  superscripts: {
+    label: "🔢 Powers & Superscripts",
+    symbols: [
+      "⁰", "¹", "²", "³", "⁴", "⁵", "⁶", "⁷", "⁸", "⁹", "⁺", "⁻", "ⁿ", "ˣ", "ʸ", "⁻¹", "⁻²", "⁻³"
+    ],
+  },
+  subscripts: {
+    label: "🔡 Subscripts (Formulas)",
+    symbols: [
+      "₀", "₁", "₂", "₃", "₄", "₅", "₆", "₇", "₈", "₉", "₊", "₋", "ₐ", "ᵢ", "ᵣ", "ₛ", "ᵤ", "ᵥ", "ₓ"
+    ],
+  },
+  math: {
+    label: "📐 Math & Operators",
+    symbols: [
+      "±", "×", "÷", "≈", "≠", "≤", "≥", "√", "∛", "∑", "∫", "∞", "∝", "∠", "°", "%"
+    ],
+  },
+};
 
 export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
   const effectiveContext = useAuthStore((state) => state.getEffectiveContext());
@@ -123,7 +160,7 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
   const [downloadingDocx, setDownloadingDocx] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
 
-  // Auto-switch font mode when subject changes
+  // Auto-switch font mode and science symbol category when subject changes
   useEffect(() => {
     const subj = String(selectedSubject || "").toLowerCase();
     if (subj.includes("urdu")) {
@@ -135,7 +172,162 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
     } else {
       setSelectedFontMode("auto");
     }
+
+    if (subj.includes("chem")) {
+      setActiveSymbolCategory("chemistry");
+    } else if (subj.includes("phys")) {
+      setActiveSymbolCategory("physics");
+    } else if (subj.includes("math")) {
+      setActiveSymbolCategory("math");
+    }
   }, [selectedSubject]);
+
+  // Scientific Symbols Palette & Active Input Cursor Tracking
+  const [activeSymbolCategory, setActiveSymbolCategory] = useState("physics");
+  const [focusedField, setFocusedField] = useState(null); // { type, idx, optIdx, el, label }
+
+  // Insert selected scientific symbol directly at cursor in active input
+  const insertSymbol = (sym) => {
+    if (!focusedField) {
+      if (shortQuestions.length > 0) {
+        const next = [...shortQuestions];
+        next[0].q = (next[0].q || "") + sym;
+        setShortQuestions(next);
+        setToast({
+          type: "success",
+          message: `Inserted '${sym}' into Short Question 1. (Tip: click inside any question field to insert at cursor!)`,
+        });
+        setTimeout(() => setToast(null), 4000);
+      }
+      return;
+    }
+
+    const { type, idx, optIdx, el } = focusedField;
+
+    const insertIntoString = (str) => {
+      const s = String(str || "");
+      if (el && typeof el.selectionStart === "number" && typeof el.selectionEnd === "number") {
+        const start = el.selectionStart;
+        const end = el.selectionEnd;
+        const updated = s.slice(0, start) + sym + s.slice(end);
+        setTimeout(() => {
+          if (el) {
+            el.focus();
+            try {
+              el.setSelectionRange(start + sym.length, start + sym.length);
+            } catch (e) {}
+          }
+        }, 0);
+        return updated;
+      }
+      return s + sym;
+    };
+
+    if (type === "instructions") {
+      setInstructions((prev) => insertIntoString(prev));
+    } else if (type === "mcq_q") {
+      setMcqs((prev) => {
+        const next = [...prev];
+        if (next[idx]) next[idx].q = insertIntoString(next[idx].q);
+        return next;
+      });
+    } else if (type === "mcq_opt") {
+      setMcqs((prev) => {
+        const next = [...prev];
+        if (next[idx] && next[idx].options) {
+          const nextOpts = [...next[idx].options];
+          nextOpts[optIdx] = insertIntoString(nextOpts[optIdx]);
+          next[idx].options = nextOpts;
+        }
+        return next;
+      });
+    } else if (type === "short") {
+      setShortQuestions((prev) => {
+        const next = [...prev];
+        if (next[idx]) next[idx].q = insertIntoString(next[idx].q);
+        return next;
+      });
+    } else if (type === "long") {
+      setLongQuestions((prev) => {
+        const next = [...prev];
+        if (next[idx]) next[idx].q = insertIntoString(next[idx].q);
+        return next;
+      });
+    }
+  };
+
+  // Convert typed plain text scientific formulas into standard Unicode notations
+  const autoFormatScientificText = (text) => {
+    if (!text) return "";
+    let s = String(text);
+
+    // Superscripts
+    const supMap = {
+      "^0": "⁰", "^1": "¹", "^2": "²", "^3": "³", "^4": "⁴",
+      "^5": "⁵", "^6": "⁶", "^7": "⁷", "^8": "⁸", "^9": "⁹",
+      "^+": "⁺", "^-": "⁻", "^n": "ⁿ"
+    };
+    Object.entries(supMap).forEach(([k, v]) => {
+      s = s.split(k).join(v);
+    });
+
+    // Subscripts
+    const subMap = {
+      "_0": "₀", "_1": "₁", "_2": "₂", "_3": "₃", "_4": "₄",
+      "_5": "₅", "_6": "₆", "_7": "₇", "_8": "₈", "_9": "₉",
+      "_i": "ᵢ", "_f": "ᵥ", "_a": "ₐ", "_r": "ᵣ", "_s": "ₛ"
+    };
+    Object.entries(subMap).forEach(([k, v]) => {
+      s = s.split(k).join(v);
+    });
+
+    // Common Chemical Formulas
+    s = s.replace(/\bH2O\b/g, "H₂O");
+    s = s.replace(/\bCO2\b/g, "CO₂");
+    s = s.replace(/\bH2SO4\b/g, "H₂SO₄");
+    s = s.replace(/\bCaCO3\b/g, "CaCO₃");
+    s = s.replace(/\bNH3\b/g, "NH₃");
+    s = s.replace(/\bCH4\b/g, "CH₄");
+    s = s.replace(/\bO2\b/g, "O₂");
+    s = s.replace(/\bN2\b/g, "N₂");
+    s = s.replace(/\bCl2\b/g, "Cl₂");
+    s = s.replace(/\bHCl\b/g, "HCl");
+    s = s.replace(/\bNaCl\b/g, "NaCl");
+
+    // Physics units and notations
+    s = s.replace(/\bm\/s2\b/g, "m/s²");
+    s = s.replace(/\bm\/s\^2\b/g, "m/s²");
+    s = s.replace(/\bvf\^2\b/g, "v_f²");
+    s = s.replace(/\bvi\^2\b/g, "v_i²");
+    s = s.replace(/<->|<=>/g, "⇌");
+    s = s.replace(/->/g, "→");
+    s = s.replace(/\+\/-/g, "±");
+    s = s.replace(/\bdegC\b/gi, "°C");
+
+    return s;
+  };
+
+  const handleAutoFormatActiveQuestions = () => {
+    setMcqs((prev) =>
+      prev.map((m) => ({
+        ...m,
+        q: autoFormatScientificText(m.q),
+        options: m.options.map((o) => autoFormatScientificText(o)),
+      }))
+    );
+    setShortQuestions((prev) =>
+      prev.map((sq) => ({ ...sq, q: autoFormatScientificText(sq.q) }))
+    );
+    setLongQuestions((prev) =>
+      prev.map((lq) => ({ ...lq, q: autoFormatScientificText(lq.q) }))
+    );
+    setInstructions((prev) => autoFormatScientificText(prev));
+    setToast({
+      type: "success",
+      message: "✨ Auto-formatted scientific formulas, superscripts, subscripts, and arrows across all questions!",
+    });
+    setTimeout(() => setToast(null), 4000);
+  };
 
   // Download Handlers
   const handleDownloadDOCX = async (paper) => {
@@ -632,10 +824,83 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
                   <textarea
                     rows={2}
                     value={instructions}
+                    onFocus={(e) => setFocusedField({ type: "instructions", el: e.target, label: "General Instructions" })}
                     onChange={(e) => setInstructions(e.target.value)}
                     placeholder="Optional: Enter specific instructions for cadets (e.g., Attempt all questions. Mobile phones and calculators are strictly forbidden.)..."
                     className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600 resize-y"
                   />
+                </div>
+
+                {/* Physics, Chemistry & Scientific Symbol Palette */}
+                <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-900 to-slate-950 text-white border border-slate-800 shadow-md space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-800/80">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-amber-400" />
+                      <span className="text-xs font-bold text-slate-100">
+                        Physics & Chemistry Scientific Symbol Palette
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                        ⚡ Active
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {/* Active target field indicator */}
+                      <span className="text-[11px] text-slate-400">
+                        Target:{" "}
+                        <strong className="text-blue-300">
+                          {focusedField ? focusedField.label : "Short Q1 (Default)"}
+                        </strong>
+                      </span>
+
+                      {/* Auto Format Button */}
+                      <button
+                        type="button"
+                        onClick={handleAutoFormatActiveQuestions}
+                        className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 shadow-sm transition-all active:scale-95"
+                        title="Intelligently convert H2O -> H₂O, x^2 -> x², -> -> → across all questions"
+                      >
+                        <Wand2 className="w-3 h-3" />
+                        <span>Auto-Format Formulas</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Palette Category Selector Tabs */}
+                  <div className="flex flex-wrap items-center gap-1.5 pb-1">
+                    {Object.entries(SCIENTIFIC_SYMBOLS).map(([catKey, catObj]) => (
+                      <button
+                        key={catKey}
+                        type="button"
+                        onClick={() => setActiveSymbolCategory(catKey)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                          activeSymbolCategory === catKey
+                            ? "bg-blue-600 text-white shadow-sm font-bold"
+                            : "bg-slate-800/80 text-slate-300 hover:bg-slate-700"
+                        }`}
+                      >
+                        {catObj.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Clickable Symbol Keys Grid */}
+                  <div className="flex flex-wrap gap-1.5 p-2 bg-slate-950/60 rounded-xl border border-slate-800/60 max-h-36 overflow-y-auto">
+                    {SCIENTIFIC_SYMBOLS[activeSymbolCategory]?.symbols.map((sym, symIdx) => (
+                      <button
+                        key={symIdx}
+                        type="button"
+                        onClick={() => insertSymbol(sym)}
+                        className="min-w-[32px] h-8 px-2 bg-slate-800 hover:bg-blue-600 hover:text-white border border-slate-700 hover:border-blue-500 rounded-lg text-xs font-mono font-bold text-slate-100 flex items-center justify-center transition-all active:scale-90 shadow-sm"
+                        title={`Click to insert '${sym}' into active question field`}
+                      >
+                        {sym}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-slate-400">
+                    💡 <strong>Tip:</strong> Click any symbol to insert it directly at your cursor into the selected question or option box. Click <em>Auto-Format Formulas</em> to automatically format typed codes like <code className="text-amber-300">H2O</code>, <code className="text-amber-300">m/s^2</code>, or <code className="text-amber-300">vf^2</code>.
+                  </p>
                 </div>
 
                 {/* Section A: MCQs */}
@@ -669,6 +934,7 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
                           <input
                             type="text"
                             value={mcq.q}
+                            onFocus={(e) => setFocusedField({ type: "mcq_q", idx, el: e.target, label: `MCQ Q${idx + 1} Stem` })}
                             onChange={(e) => {
                               const next = [...mcqs];
                               next[idx].q = e.target.value;
@@ -694,6 +960,7 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
                               <input
                                 type="text"
                                 value={mcq.options[optIdx]}
+                                onFocus={(e) => setFocusedField({ type: "mcq_opt", idx, optIdx, el: e.target, label: `MCQ Q${idx + 1} Opt (${optLetter})` })}
                                 onChange={(e) => {
                                   const next = [...mcqs];
                                   next[idx].options[optIdx] = e.target.value;
@@ -731,19 +998,20 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
                     {shortQuestions.map((item, idx) => (
                       <div
                         key={idx}
-                        className="p-2.5 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center gap-2"
+                        className="p-2.5 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 flex items-start gap-2"
                       >
-                        <span className="text-xs font-bold text-slate-400 font-mono">Q{idx + 1}</span>
-                        <input
-                          type="text"
+                        <span className="text-xs font-bold text-slate-400 font-mono pt-2">Q{idx + 1}</span>
+                        <textarea
+                          rows={2}
                           value={item.q}
+                          onFocus={(e) => setFocusedField({ type: "short", idx, el: e.target, label: `Short Q${idx + 1}` })}
                           onChange={(e) => {
                             const next = [...shortQuestions];
                             next[idx].q = e.target.value;
                             setShortQuestions(next);
                           }}
-                          placeholder="Type short question prompt..."
-                          className="flex-1 px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-semibold"
+                          placeholder="Type short question prompt or numerical formula..."
+                          className="flex-1 px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-semibold resize-y"
                         />
                         <input
                           type="text"
@@ -759,7 +1027,7 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
                         <button
                           type="button"
                           onClick={() => setShortQuestions(shortQuestions.filter((_, i) => i !== idx))}
-                          className="p-1 text-slate-400 hover:text-rose-500"
+                          className="p-1 text-slate-400 hover:text-rose-500 pt-2"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -789,19 +1057,20 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
                     {longQuestions.map((item, idx) => (
                       <div
                         key={idx}
-                        className="p-2.5 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center gap-2"
+                        className="p-2.5 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 flex items-start gap-2"
                       >
-                        <span className="text-xs font-bold text-slate-400 font-mono">Q{idx + 1}</span>
-                        <input
-                          type="text"
+                        <span className="text-xs font-bold text-slate-400 font-mono pt-2">Q{idx + 1}</span>
+                        <textarea
+                          rows={3}
                           value={item.q}
+                          onFocus={(e) => setFocusedField({ type: "long", idx, el: e.target, label: `Long Q${idx + 1}` })}
                           onChange={(e) => {
                             const next = [...longQuestions];
                             next[idx].q = e.target.value;
                             setLongQuestions(next);
                           }}
-                          placeholder="Type descriptive question prompt..."
-                          className="flex-1 px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-semibold"
+                          placeholder="Type descriptive/numerical question prompt with derivations or chemical equations..."
+                          className="flex-1 px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-semibold resize-y"
                         />
                         <input
                           type="text"
@@ -817,7 +1086,7 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
                         <button
                           type="button"
                           onClick={() => setLongQuestions(longQuestions.filter((_, i) => i !== idx))}
-                          className="p-1 text-slate-400 hover:text-rose-500"
+                          className="p-1 text-slate-400 hover:text-rose-500 pt-2"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
