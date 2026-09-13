@@ -241,16 +241,14 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
   // Toggle Absent state
   const toggleAbsent = (kitNo) => {
     const raw = String(marksState[kitNo] !== undefined ? marksState[kitNo] : "").trim();
-    const isExplicitAbsent = ["ab", "absent", "a", "a/b", "n/a", "na", "-"].includes(raw.toLowerCase());
-    const isBlank = raw === "";
-    const isCurrentlyAbsent = isExplicitAbsent || isBlank;
+    const isCurrentlyAbsent = ["ab", "absent", "a", "a/b", "n/a", "na", "-"].includes(raw.toLowerCase());
 
     if (isCurrentlyAbsent) {
-      // If currently absent or blank, clearing value and focusing allows teacher to type score
+      // If currently absent, clicking toggles to PRESENT (clears value and focuses input)
       updateScore(kitNo, "");
       inputRefs.current[kitNo]?.focus();
     } else {
-      // If currently numeric, clicking marks cadet as Absent
+      // If currently present (blank or numeric), clicking explicitly marks cadet as Absent
       updateScore(kitNo, "Absent");
     }
   };
@@ -288,7 +286,7 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
     });
   }, [enrolledStudents, searchQuery]);
 
-  // Calculated counts & progress: Any blank Score row is treated as Absent
+  // Calculated counts & progress: Cadets are present by default unless explicitly marked absent
   const stats = useMemo(() => {
     let presentCount = 0;
     let absentCount = 0;
@@ -298,19 +296,16 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
       const id = std.Kit_No || std.Student_ID;
       const raw = String(marksState[id] !== undefined ? marksState[id] : "").trim();
       const isExplicitAbsent = ["absent", "ab", "a", "a/b", "n/a", "na", "-"].includes(raw.toLowerCase());
-      const isBlank = raw === "";
 
-      if (!isBlank && !isExplicitAbsent) {
+      if (isExplicitAbsent) {
+        absentCount++;
+      } else if (raw !== "") {
         const num = parseFloat(raw);
         if (!isNaN(num)) {
           presentCount++;
           totalScores += num;
-          return;
         }
       }
-
-      // Any blank Score row or explicit absence is treated as Absent
-      absentCount++;
     });
 
     const totalCadets = enrolledStudents.length;
@@ -323,7 +318,7 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
       entered: presentCount,
       present: presentCount,
       absent: absentCount,
-      remaining: totalCadets - presentCount,
+      remaining: totalCadets - (presentCount + absentCount),
       progress: Math.round(progress),
       avgPct: Math.round(avgPct * 10) / 10,
     };
@@ -841,7 +836,7 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
                   const currentVal = marksState[kitNo] !== undefined ? String(marksState[kitNo]).trim() : "";
                   const isExplicitAbsent = ["absent", "ab", "a", "a/b", "n/a", "na", "-"].includes(currentVal.toLowerCase());
                   const isBlank = currentVal === "";
-                  const isAbsent = isExplicitAbsent || isBlank;
+                  const isAbsent = isExplicitAbsent;
                   const numVal = parseFloat(currentVal);
                   const isNumeric = !isNaN(numVal) && !isExplicitAbsent && !isBlank;
                   const isInvalid = isNumeric && (numVal < 0 || numVal > maxMarks);
@@ -886,7 +881,7 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
                             type="text"
                             inputMode="decimal"
                             pattern="[0-9.]*"
-                            value={isExplicitAbsent ? "" : currentVal}
+                            value={isExplicitAbsent ? "AB" : currentVal}
                             onChange={(e) => updateScore(kitNo, e.target.value)}
                             onKeyDown={(e) => handleKeyDown(e, index)}
                             onClick={() => {
@@ -894,10 +889,12 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
                                 setIsEditMode(true);
                               }
                             }}
-                            placeholder="—"
+                            placeholder="0.0"
                             className={`w-full min-h-[42px] px-2 sm:px-3 py-1.5 text-center rounded-xl font-bold text-sm tabular-nums transition-all focus:outline-none focus:ring-2 ${
                               isInvalid
                                 ? "bg-rose-50 dark:bg-rose-950/40 text-rose-700 border-2 border-rose-500 focus:ring-rose-500"
+                                : isExplicitAbsent
+                                ? "bg-rose-50 dark:bg-rose-950/40 text-rose-700 border border-rose-300 dark:border-rose-800 focus:ring-rose-500"
                                 : isNumeric
                                 ? "bg-white dark:bg-slate-800 text-blue-700 dark:text-blue-300 border-2 border-blue-500 dark:border-blue-400 focus:ring-blue-500"
                                 : "bg-slate-50 dark:bg-slate-800/80 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 focus:ring-blue-500 focus:border-blue-500"
@@ -911,11 +908,11 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
                         <button
                           type="button"
                           onClick={() => toggleAbsent(kitNo)}
-                          title={isAbsent ? "Click to enter score" : "Click to mark absent"}
+                          title={isAbsent ? "Click to mark present" : "Click to mark absent"}
                           className={`min-h-[38px] px-2.5 sm:px-3 py-1 rounded-xl text-xs font-bold transition-all ${
                             isAbsent
                               ? "bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-800 shadow-sm hover:bg-rose-200 dark:hover:bg-rose-900"
-                              : "bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 shadow-sm hover:bg-emerald-200 dark:hover:bg-emerald-900"
+                              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700"
                           }`}
                         >
                           {isAbsent ? "ABSENT" : "PRESENT"}
@@ -925,7 +922,7 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
                       {/* Real-Time Grade Preview */}
                       <td className="py-2.5 px-2 sm:px-4 text-center font-bold">
                         {isAbsent ? (
-                          <span className="px-2 py-0.5 rounded text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-semibold border border-slate-200 dark:border-slate-700">
+                          <span className="px-2 py-0.5 rounded text-[10px] bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 font-semibold border border-rose-200 dark:border-rose-900/50">
                             AB
                           </span>
                         ) : isNumeric && !isInvalid ? (
@@ -941,7 +938,7 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
                         ) : isInvalid ? (
                           <span className="text-rose-500 text-[10px] font-bold">Exceeds {maxMarks}</span>
                         ) : (
-                          <span className="text-slate-300 dark:text-slate-600">-</span>
+                          <span className="text-slate-300 dark:text-slate-600 font-semibold">—</span>
                         )}
                       </td>
                     </tr>
