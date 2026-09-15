@@ -4,7 +4,7 @@ Prepared: 2026-09-12
 
 This roadmap is based on the repository review and the findings discussed in the conversation. It prioritizes security, marks integrity, and recoverability before architecture, interface, and performance work. This document proposes changes only; application code has not been modified as part of preparing it.
 
-The primary scope is the Next.js application. The repository also contains a Python/Streamlit implementation; Phase 2 explicitly decides its ongoing support scope. Existing mobile navigation, cadet search, and local drafts should be improved rather than rebuilt. The earlier `docs/improvement-plan.md` provides supplementary UX context, but some of its proposed features already exist.
+The roadmap applies to the Next.js application, which is the repository's single supported runtime. The former Python/Streamlit implementation was retired after an explicit product decision. Existing mobile navigation, cadet search, and local drafts should be improved rather than rebuilt.
 
 ## Planning conventions
 
@@ -32,13 +32,13 @@ Observed findings include identifier-only login, API handlers without server-sid
 
 ## Phase 2 - Code quality and architecture
 
-The repository contains parallel JavaScript and Python domain implementations, large portal components, and storage logic coupled to normalization and write behavior. Refactoring should preserve the security fixes from Phase 1.
+The repository contains large portal components and storage logic coupled to normalization and write behavior. Refactoring should preserve the security fixes from Phase 1.
 
 | Recommended implementation order | Task | Priority | Files affected | Estimated complexity | Dependencies | Risk level |
 |---|---|---|---|---|---|---|
-| 2.1 | Decide whether Python remains supported alongside Next.js. Document runtime ownership, deployment entry points, and feature parity expectations. Reconcile documentation with actual sheet names and permission behavior; do not remove the Python implementation without an explicit decision. | P1 | `README.md`, `PROJECT_SUMMARY.md`, `docs/README.md`; scope references: `app.py`, `src/`, `requirements.txt` | Small | Product/maintenance ownership decision | Low |
+| 2.1 | **Completed 2026-09-15:** Next.js was designated the single supported runtime and the obsolete Python/Streamlit implementation was removed. | P1 | `README.md`, `AGENTS.md`, `docs/README.md` | Small | Product/maintenance ownership decision | Low |
 | 2.2 | Separate API handlers, business services, and Sheets access. Keep authorization and validation explicit at server boundaries and prevent server-only credential/storage code from entering client bundles. | P1 | `app/api/*/route.js`, `lib/googleSheets.js`, `lib/services/` (new), `lib/repositories/` (new) | Large | Phase 1; 2.1 | Medium |
-| 2.3 | Centralize identifiers, absence normalization, exam resolution, grading rules, and data contracts. Introduce types incrementally at these boundaries. If Python remains supported, share documented contracts and parity fixtures rather than assuming the two implementations agree. | P1 | `lib/models.js`, `lib/grading.js`, `lib/analytics.js`, `lib/rbac.js`, `lib/schemas/` (new); corresponding `src/` modules if retained | Large | 1.5; 2.2 | High |
+| 2.3 | Centralize identifiers, absence normalization, exam resolution, grading rules, and data contracts. Introduce types incrementally at these boundaries. | P1 | `lib/models.js`, `lib/grading.js`, `lib/analytics.js`, `lib/rbac.js`, `lib/schemas/` (new) | Large | 1.5; 2.2 | High |
 | 2.4 | Split large portals into focused forms, tables, hooks, and export actions. Separate session state, server data, preferences, and drafts. Establish linting and formatting and remove verified unused code as part of the refactor. | P2 | `components/MarksEntry/MarksEntryPortal.jsx`, `components/Papers/QuestionPaperPortal.jsx`, `components/Reports/CadetResultCards.jsx`, `lib/store.js`, `package.json`, lint configuration (new) | Large | 2.2-2.3 | Medium |
 
 **Exit criteria:** business rules have an authoritative implementation, module boundaries are documented, and storage changes do not require rewriting portal components.
@@ -72,11 +72,11 @@ Mobile navigation, cadet search, and local drafts already exist. The draft key c
 
 ## Phase 5 - Testing
 
-The existing Python tests do not establish coverage for the JavaScript application. Start the JavaScript test harness during Phase 1 and add regression tests with each fix. This phase broadens coverage and makes it a release gate.
+The retired Python tests did not establish coverage for the JavaScript application. Start the JavaScript test harness during Phase 1 and add regression tests with each fix. This phase broadens coverage and makes it a release gate.
 
 | Recommended implementation order | Task | Priority | Files affected | Estimated complexity | Dependencies | Risk level |
 |---|---|---|---|---|---|---|
-| 5.1 | Establish JavaScript unit and API test tooling with synthetic fixtures. Cover grading boundaries, absence/missing distinctions, duplicate records, exam selection, and role mappings. Retain Python checks and add parity fixtures if Python remains supported. | P1 | `package.json`, test configuration (new), `tests/js/` (new), existing `tests/test_*.py` if Python is retained | Medium | Begin during Phase 1; extend after 2.3 | Low |
+| 5.1 | Establish JavaScript unit and API test tooling with synthetic fixtures. Cover grading boundaries, absence/missing distinctions, duplicate records, exam selection, and role mappings. | P1 | `package.json`, test configuration (new), `tests/` | Medium | Begin during Phase 1; extend after 2.3 | Low |
 | 5.2 | Add adversarial API and storage integration tests: forged roles, unauthorized records, cross-record submission IDs, invalid payloads, formula inputs, failed reads, partial writes, retries, and concurrent saves. Exercise the selected durable storage/coordination mechanism in staging, beyond mocks alone. | P1 | `tests/api/` (new), `tests/integration/` (new), synthetic Sheets fixtures (new) | Large | 5.1; 1.1-1.4; 3.2-3.5 | Low |
 | 5.3 | Add end-to-end tests for teacher/admin workflows, session expiry, draft isolation/recovery, import validation, paper review, and report downloads across mobile and desktop. Include failed network requests and logout/login on shared devices. | P1 | `tests/e2e/` (new), browser-test configuration (new) | Large | 5.1; Phase 4 | Low |
 | 5.4 | Add accessibility and export checks, including RTL text, page breaks, totals, and long documents. Gate changes on lint, automated tests, and production build in CI; retain manual visual review for multilingual exports. | P1 | `tests/e2e/` (new), `tests/exports/` (new), `package.json`, `.github/workflows/ci.yml` (new) | Medium | 5.1-5.3 | Low |
@@ -90,7 +90,7 @@ The page statically imports the major portals, several portals import spreadshee
 | Recommended implementation order | Task | Priority | Files affected | Estimated complexity | Dependencies | Risk level |
 |---|---|---|---|---|---|---|
 | 6.1 | Measure bundle size, API latency, Sheets usage, and export time using representative data. Lazy-load inactive portals and document/spreadsheet generators; optimize repeated analytics scans and large lists where measurements justify it. Set performance budgets from the baseline. | P2 | `app/page.js`, `components/`, `lib/analytics.js`, `lib/pdfGenerator.js`, `lib/paperDocumentGenerator.js`, performance scripts/configuration (new) | Medium | 3.3-3.5; Phase 5 | Medium |
-| 6.2 | Establish reproducible deployments: validate environment configuration, use locked dependency installs, review current dependency advisories, separate staging/production data, and document rollback. Review service-account privileges and secret handling without exposing credentials in logs. | P1 | `package.json`, `package-lock.json`, `vercel.json`, `next.config.mjs`, `.env.example`, deployment workflow and runbook (new); `requirements.txt` if Python is deployed | Medium | 5.4; target deployment configuration | Medium |
+| 6.2 | Establish reproducible deployments: validate environment configuration, use locked dependency installs, review current dependency advisories, separate staging/production data, and document rollback. Review service-account privileges and secret handling without exposing credentials in logs. | P1 | `package.json`, `package-lock.json`, `vercel.json`, `next.config.mjs`, `.env.example`, deployment workflow and runbook (new) | Medium | 5.4; target deployment configuration | Medium |
 | 6.3 | Add operational monitoring for failed saves, latency, quota errors, and stale data. Configure actionable alerts without recording private examination content. Rehearse restore and rollback against non-production data. | P1 | `lib/services/` (new), `lib/repositories/` (new), logging utilities (new), operational runbook (new), deployment settings | Medium | 3.4; 6.2 | Low |
 | 6.4 | Repair manifest icon references. If installation/offline support remains a product goal, add an offline shell with explicit cache rules excluding private API responses and exam content; verify cache cleanup and update behavior. | P2 | `public/manifest.json`, `public/icon-192.png` (new), `public/icon-512.png` (new), `app/layout.js`, service worker (new, conditional) | Medium | 1.1-1.2; 4.1; 5.3; offline-support decision | Medium |
 
@@ -99,12 +99,12 @@ The page statically imports the major portals, several portals import spreadshee
 ## Recommended delivery sequence and decision gates
 
 1. Start 5.1 alongside Phase 1 and add focused tests with each security/data-integrity fix. Complete Phase 1 before broader rollout.
-2. Resolve Python support in 2.1, then establish service and domain boundaries in Phase 2.
+2. With runtime ownership resolved in 2.1, establish service and domain boundaries in Phase 2.
 3. Validate the actual data layout in 3.1. Select the concurrency/storage strategy in 3.2 before implementing durable audit and cache behavior. Back up and reconcile data before any migration or cleanup.
 4. Deliver Phase 4 against the secured, scoped APIs; preserve existing working mobile and bulk-entry features.
 5. Complete the broader Phase 5 suite and CI gates before production release. Testing is continuous throughout all phases.
 6. Measure and optimize performance, then complete deployment and operational readiness. Implement a service worker only if offline installation remains in scope.
 
-Any dependency issue confirmed to be critical during review moves immediately into Phase 1. Likewise, if the active deployment exposes the parallel Python application, apply the same authentication and authorization requirements to that entry point before treating Phase 1 as complete.
+Any dependency issue confirmed to be critical during review moves immediately into Phase 1.
 
-Implementation estimates should be revisited after the identity-provider, grading-policy, Python-support, and storage decisions. This roadmap does not claim that production access, dependency advisories, runtime behavior, or a full browser accessibility audit have been verified during its preparation.
+Implementation estimates should be revisited after the identity-provider, grading-policy, and storage decisions. This roadmap does not claim that production access, dependency advisories, runtime behavior, or a full browser accessibility audit have been verified during its preparation.

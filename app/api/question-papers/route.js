@@ -1,16 +1,18 @@
 import { NextResponse } from "next/server";
 import { appendQuestionPaper, updateQuestionPaperStatus } from "@/lib/googleSheets";
+import { getCurrentStaff } from "@/lib/staffAuth";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request) {
   try {
+    const current = await getCurrentStaff();
+    if (!current) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     const body = await request.json();
     const {
       grade,
       subject,
       examId,
-      teacherName,
       submissionType,
       fileUrl,
       textContent,
@@ -35,7 +37,7 @@ export async function POST(request) {
     const record = {
       Submission_ID: submissionId,
       Submitted_At: new Date().toISOString().replace("T", " ").substring(0, 16),
-      Teacher_Name: teacherName || "Faculty Member",
+      Teacher_Name: current.staff.Full_Name || current.staff.Name || "Faculty Member",
       Grade: String(grade),
       Subject: String(subject),
       Exam_ID: String(examId),
@@ -64,6 +66,9 @@ export async function POST(request) {
 
 export async function PATCH(request) {
   try {
+    const current = await getCurrentStaff();
+    if (!current) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    if (!current.permissions.isAdmin) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
     const body = await request.json();
     const { submissionId, status, adminFeedback } = body;
 

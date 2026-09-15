@@ -6,11 +6,13 @@
 **Design Standard:** UI/UX Pro Max (Design Intelligence Framework — WCAG 2.1 AA Compliant)  
 **Scope:** Architecture, UI/UX Design System, Feature Enhancements, Performance & Migration Strategy  
 
+> Historical note: this document records the migration rationale and target design. The migration is complete; Next.js is now the only supported application, and references to Python/Streamlit below describe the retired predecessor.
+
 ---
 
 ## 📑 Executive Summary
 
-The **PS Cadet College Karachi Exam Portal** currently operates as a Python/Streamlit web application connected to a Google Sheets master workbook. While functionally rich (handling RBAC, marks logging, analytical dashboards, merit rankings, and question paper submissions), the current Streamlit architecture presents critical constraints on mobile devices and serverless hosting:
+The former **PS Cadet College Karachi Exam Portal** operated as a Python/Streamlit web application connected to a Google Sheets master workbook. While functionally rich (handling RBAC, marks logging, analytical dashboards, merit rankings, and question paper submissions), that Streamlit architecture presented critical constraints on mobile devices and serverless hosting:
 
 1. **Mobile UX Bottlenecks:** Streamlit's full-page rerun lifecycle, heavy WebSocket dependencies, and desktop-centric data editor grids (`st.data_editor`) result in high latency, sluggish keypad interactions, and layout shifts on smartphones.
 2. **Hosting & Serverless Constraints:** Streamlit requires a persistent Python VM and does not execute natively on Vercel's Edge/Serverless platform without specialized container workarounds.
@@ -421,9 +423,9 @@ NEXTAUTH_SECRET="your-super-secret-jwt-key-256-bit"
 
 ---
 
-## 📋 7. Summary Comparison: Current Streamlit vs Recommended Next.js/React
+## 📋 7. Historical Comparison: Former Streamlit vs Recommended Next.js/React
 
-| Evaluation Parameter | Current Python Streamlit App | Recommended Next.js / React Web App |
+| Evaluation Parameter | Former Python Streamlit App | Recommended Next.js / React Web App |
 | :--- | :--- | :--- |
 | **Hosting on Vercel** | ❌ Requires server container workarounds | ✅ 100% Native Vercel Serverless & Edge |
 | **Initial Load Time (Mobile 4G)** | ⚠️ 3.5s – 6.0s (Python VM + WebSocket handshake) | ⚡ < 1.0s (Static SSR / Edge CDN Cached) |

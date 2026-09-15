@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import { saveOrUpdateMarksLog } from "@/lib/googleSheets";
+import { getCurrentStaff } from "@/lib/staffAuth";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request) {
   try {
+    if (!(await getCurrentStaff())) {
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
     const body = await request.json();
     const { records, examId, subject } = body;
 

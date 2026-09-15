@@ -15,6 +15,7 @@ import {
   X
 } from "lucide-react";
 import { useAuthStore } from "@/lib/store";
+import { signOut } from "next-auth/react";
 
 export default function Navbar({ staffList = [], db = {}, onRefresh, refreshing }) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -190,7 +191,7 @@ export default function Navbar({ staffList = [], db = {}, onRefresh, refreshing 
                 </div>
 
                 <button
-                  onClick={() => { setDropdownOpen(false); logout(); }}
+                  onClick={async () => { setDropdownOpen(false); logout(); await signOut({ callbackUrl: "/" }); }}
                   className="w-full text-left px-3 py-2 rounded-xl text-xs font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors flex items-center gap-2"
                 >
                   <LogOut className="w-4 h-4" />

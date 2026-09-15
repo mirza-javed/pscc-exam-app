@@ -155,7 +155,7 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
     },
   ]);
 
-  // Font and Typography State (for custom fonts in fonts/ directory)
+  // Font and Typography State (for custom fonts in public/fonts/)
   const [selectedFontMode, setSelectedFontMode] = useState("auto"); // "auto" | "urdu" | "sindhi" | "arabic" | "english"
   const [downloadingDocx, setDownloadingDocx] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
@@ -701,7 +701,7 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
                   <option value="english">English / Standard — Inter / Calibri (LTR)</option>
                 </select>
                 <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                  Custom fonts from <code className="text-blue-600 dark:text-blue-400 font-mono">fonts/</code> folder applied to preview, Word (.docx), and PDF.
+                  Custom fonts from <code className="text-blue-600 dark:text-blue-400 font-mono">public/fonts/</code> applied to preview, Word (.docx), and PDF.
                 </p>
               </div>
 

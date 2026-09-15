@@ -34,8 +34,11 @@ export default function Home() {
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState("analytics"); // Default to analytics dashboard
+  const [checkingSession, setCheckingSession] = useState(true);
 
   const isLoggedIn = useAuthStore((state) => state.isLoggedIn);
+  const setAuthenticatedUser = useAuthStore((state) => state.setAuthenticatedUser);
+  const logout = useAuthStore((state) => state.logout);
   const theme = useAuthStore((state) => state.theme);
   const effectiveContext = useAuthStore((state) => state.getEffectiveContext());
 
@@ -56,6 +59,10 @@ export default function Home() {
       setError(null);
 
       const res = await fetch(`/api/database${forceRefresh ? "?refresh=true" : ""}`);
+      if (res.status === 401) {
+        logout();
+        return;
+      }
       const json = await res.json();
 
       if (!json.success) {
@@ -73,8 +80,22 @@ export default function Home() {
   };
 
   useEffect(() => {
-    fetchDatabase();
-  }, []);
+    let cancelled = false;
+    fetch("/api/staff-session", { cache: "no-store" })
+      .then((response) => response.ok ? response.json() : null)
+      .then((result) => {
+        if (cancelled) return;
+        if (result?.success) setAuthenticatedUser(result.user, result.permissions);
+        else logout();
+      })
+      .catch(() => { if (!cancelled) logout(); })
+      .finally(() => { if (!cancelled) setCheckingSession(false); });
+    return () => { cancelled = true; };
+  }, [setAuthenticatedUser, logout]);
+
+  useEffect(() => {
+    if (isLoggedIn && !checkingSession) fetchDatabase();
+  }, [isLoggedIn, checkingSession]);
 
   const db = dbData?.data || {};
   const staffList = db.Staff_Directory || [];
@@ -82,7 +103,7 @@ export default function Home() {
   const counts = meta?.counts || {};
 
   // If initial loading screen
-  if (loading && !dbData) {
+  if (checkingSession || (isLoggedIn && loading && !dbData)) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-950 space-y-4">
         <div className="w-12 h-12 rounded-2xl bg-blue-700 text-white flex items-center justify-center animate-bounce shadow-xl shadow-blue-900/30">
@@ -102,7 +123,7 @@ export default function Home() {
 
   // If not logged in, render the login screen
   if (!isLoggedIn) {
-    return <LoginScreen staffList={staffList} db={db} />;
+    return <LoginScreen />;
   }
 
   // Authenticated Portal View

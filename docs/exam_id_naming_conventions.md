@@ -17,7 +17,7 @@ In the **PS Cadet College Exam Application**, the `Exam_ID` in the `exam_scheme`
 ## 2. Recommended `Exam_ID` Naming Conventions
 
 ### Option 1: Standard Uppercase Snake Case (Recommended)
-This format uses `EXAM_<NAME>_<YEAR>`. It is highly readable, unambiguous, and avoids spaces or special character escaping issues in Python pandas and Google Sheets.
+This format uses `EXAM_<NAME>_<YEAR>`. It is highly readable, unambiguous, and avoids spaces or special-character escaping issues in application code and Google Sheets.
 
 | Exam Name | Recommended `Exam_ID` | Description |
 | :--- | :--- | :--- |
