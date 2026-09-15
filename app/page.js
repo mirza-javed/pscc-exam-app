@@ -41,6 +41,9 @@ export default function Home() {
   const logout = useAuthStore((state) => state.logout);
   const theme = useAuthStore((state) => state.theme);
   const effectiveContext = useAuthStore((state) => state.getEffectiveContext());
+  const previewTeacherId = effectiveContext.isPreview
+    ? effectiveContext.user?.Teacher_ID || ""
+    : "";
 
   // Apply dark mode on mount / theme change
   useEffect(() => {
@@ -58,7 +61,11 @@ export default function Home() {
       else setLoading(true);
       setError(null);
 
-      const res = await fetch(`/api/database${forceRefresh ? "?refresh=true" : ""}`);
+      const params = new URLSearchParams();
+      if (forceRefresh) params.set("refresh", "true");
+      if (previewTeacherId) params.set("previewTeacherId", previewTeacherId);
+      const query = params.toString();
+      const res = await fetch(`/api/database${query ? `?${query}` : ""}`);
       if (res.status === 401) {
         logout();
         return;
@@ -95,7 +102,7 @@ export default function Home() {
 
   useEffect(() => {
     if (isLoggedIn && !checkingSession) fetchDatabase();
-  }, [isLoggedIn, checkingSession]);
+  }, [isLoggedIn, checkingSession, previewTeacherId]);
 
   const db = dbData?.data || {};
   const staffList = db.Staff_Directory || [];

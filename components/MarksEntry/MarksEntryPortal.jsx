@@ -32,8 +32,9 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
   const effectiveContext = useAuthStore((state) => state.getEffectiveContext());
   const user = effectiveContext.user;
   const perms = effectiveContext.permissions;
-  const isAdmin = perms?.isAdmin;
+  const canWriteAllMarks = perms?.canWriteAllMarks;
   const isClassTeacher = perms?.isClassTeacher;
+  const isPreview = effectiveContext.isPreview;
 
   // Available exam options from exam_scheme or Grading_System
   const examOptions = useMemo(() => {
@@ -54,7 +55,7 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
 
   // Available grades based on permissions
   const availableGrades = useMemo(() => {
-    if (isAdmin) {
+    if (canWriteAllMarks) {
       const allStudents = db.Students || [];
       const set = new Set();
       allStudents.forEach((s) => {
@@ -64,7 +65,7 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
       return Array.from(set).sort((a, b) => parseInt(a) - parseInt(b));
     }
     return perms?.assignedGrades || [];
-  }, [isAdmin, perms, db]);
+  }, [canWriteAllMarks, perms, db]);
 
   // State selections
   const [selectedExam, setSelectedExam] = useState(examOptions[0] || "");
@@ -84,6 +85,17 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
   const [uploadStatus, setUploadStatus] = useState(null);
 
   const inputRefs = useRef({});
+  const duplicateKitNos = useMemo(
+    () =>
+      new Set(
+        (db.Authorization_Issues?.duplicateKitNos || []).map((kitNo) =>
+          String(kitNo).trim().toLowerCase()
+        )
+      ),
+    [db]
+  );
+  const isDuplicateKitNo = (kitNo) =>
+    duplicateKitNos.has(String(kitNo || "").trim().toLowerCase());
 
   // Detect whether previous marks already exist in DB for this selection
   const hasExistingMarks = useMemo(() => {
@@ -92,7 +104,7 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
 
   // Resolve available sections for selected grade
   const availableSections = useMemo(() => {
-    if (isAdmin) {
+    if (canWriteAllMarks) {
       const allStudents = db.Students || [];
       const set = new Set();
       allStudents
@@ -103,8 +115,8 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
         });
       return Array.from(set).sort();
     }
-    return perms?.assignedSections?.[selectedGrade] || ["A"];
-  }, [isAdmin, perms, db, selectedGrade]);
+    return perms?.assignedSections?.[selectedGrade] || [];
+  }, [canWriteAllMarks, perms, db, selectedGrade]);
 
   // Sync selected section when available sections change
   useEffect(() => {
@@ -116,17 +128,17 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
   // Resolve available subjects for selected grade & section
   const availableSubjects = useMemo(() => {
     const gradeSubjects = getSubjectsForGrade(db, selectedGrade);
-    if (isAdmin || isClassTeacher) {
+    if (canWriteAllMarks || isClassTeacher) {
       return gradeSubjects;
     }
     const assignedKey = `${selectedGrade}_${selectedSection}`;
     const assigned = perms?.assignedSubjects?.[assignedKey] || [];
     if (assigned.length > 0) {
       const filtered = gradeSubjects.filter((s) => assigned.includes(s));
-      return filtered.length > 0 ? filtered : gradeSubjects;
+      return filtered.length > 0 ? filtered : assigned;
     }
-    return gradeSubjects;
-  }, [isAdmin, isClassTeacher, perms, db, selectedGrade, selectedSection]);
+    return [];
+  }, [canWriteAllMarks, isClassTeacher, perms, db, selectedGrade, selectedSection]);
 
   // Sync selected subject
   useEffect(() => {
@@ -294,6 +306,7 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
 
     enrolledStudents.forEach((std) => {
       const id = std.Kit_No || std.Student_ID;
+      if (isDuplicateKitNo(id)) return;
       const raw = String(marksState[id] !== undefined ? marksState[id] : "").trim();
       const isExplicitAbsent = ["absent", "ab", "a", "a/b", "n/a", "na", "-"].includes(raw.toLowerCase());
 
@@ -308,7 +321,9 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
       }
     });
 
-    const totalCadets = enrolledStudents.length;
+    const totalCadets = enrolledStudents.filter(
+      (std) => !isDuplicateKitNo(std.Kit_No || std.Student_ID)
+    ).length;
     const progress = totalCadets > 0 ? (presentCount / totalCadets) * 100 : 0;
     const avgScore = presentCount > 0 ? totalScores / presentCount : 0;
     const avgPct = maxMarks > 0 ? (avgScore / maxMarks) * 100 : 0;
@@ -322,7 +337,7 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
       progress: Math.round(progress),
       avgPct: Math.round(avgPct * 10) / 10,
     };
-  }, [enrolledStudents, marksState, maxMarks]);
+  }, [enrolledStudents, marksState, maxMarks, duplicateKitNos]);
 
   // Client-side Excel / CSV Parser (SheetJS)
   const handleFileUpload = (e) => {
@@ -367,7 +382,7 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
         json.forEach((row) => {
           const sId = String(row[idCol] || "").trim();
           const rawMark = String(row[marksCol] !== undefined ? row[marksCol] : "").trim();
-          if (sId && rawMark) {
+          if (sId && rawMark && !isDuplicateKitNo(sId)) {
             newMarks[sId] = rawMark;
             mappedCount++;
           }
@@ -387,7 +402,9 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
 
   // Download pre-populated CSV template
   const downloadTemplate = () => {
-    const rows = enrolledStudents.map((std) => {
+    const rows = enrolledStudents
+      .filter((std) => !isDuplicateKitNo(std.Kit_No || std.Student_ID))
+      .map((std) => {
       const id = std.Kit_No || std.Student_ID || "";
       const raw = marksState[id] !== undefined ? String(marksState[id]).trim() : "";
       const isExplicitAbsent = ["absent", "ab", "a", "a/b", "n/a", "na", "-"].includes(raw.toLowerCase());
@@ -398,7 +415,7 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
         Group: std.Group || std.Stream || "",
         Marks_Obtained: isBlank || isExplicitAbsent ? "Absent" : raw,
       };
-    });
+      });
 
     const worksheet = XLSX.utils.json_to_sheet(rows);
     const workbook = XLSX.utils.book_new();
@@ -411,8 +428,14 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
 
   // Save or update marks to Google Sheets via /api/marks
   const handleSaveMarks = async () => {
+    if (isPreview) {
+      setToast({ type: "info", message: "Marks cannot be changed while previewing another staff member." });
+      return;
+    }
     let numericCount = 0;
-    const records = enrolledStudents.map((std) => {
+    const records = enrolledStudents
+      .filter((std) => !isDuplicateKitNo(std.Kit_No || std.Student_ID))
+      .map((std) => {
       const id = std.Kit_No || std.Student_ID;
       const raw = marksState[id] !== undefined ? String(marksState[id]).trim() : "";
       const isExplicitAbsent = ["absent", "ab", "a", "a/b", "n/a", "na", "-"].includes(raw.toLowerCase());
@@ -438,7 +461,7 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
         Subject: selectedSubject,
         Marks_Obtained: finalMarks,
       };
-    });
+      });
 
     if (records.length === 0) {
       setToast({ type: "info", message: "No enrolled cadets found for this selection." });
@@ -804,6 +827,18 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
         </div>
       )}
 
+      {duplicateKitNos.size > 0 && (
+        <div className="p-3.5 sm:p-4 rounded-2xl border border-rose-400 dark:border-rose-700 bg-rose-50 dark:bg-rose-950/50 text-rose-800 dark:text-rose-200 flex items-start gap-3 shadow-sm">
+          <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+          <div>
+            <div className="font-bold text-xs sm:text-sm">Duplicate Kit No detected</div>
+            <p className="text-[11px] sm:text-xs mt-1">
+              Marks entry is disabled for Kit No {Array.from(duplicateKitNos).join(", ")} because each cadet must have a unique Kit No. Correct the duplicate in the Students sheet before entering marks.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Main Student Entry Table */}
       {filteredStudents.length === 0 ? (
         <div className="bg-white dark:bg-slate-900 rounded-2xl p-12 text-center border border-slate-200 dark:border-slate-800 space-y-2">
@@ -833,6 +868,7 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
                 {filteredStudents.map((std, index) => {
                   const kitNo = std.Kit_No || std.Student_ID;
+                  const isDuplicate = isDuplicateKitNo(kitNo);
                   const currentVal = marksState[kitNo] !== undefined ? String(marksState[kitNo]).trim() : "";
                   const isExplicitAbsent = ["absent", "ab", "a", "a/b", "n/a", "na", "-"].includes(currentVal.toLowerCase());
                   const isBlank = currentVal === "";
@@ -846,9 +882,13 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
 
                   return (
                     <tr
-                      key={kitNo}
+                      key={`${kitNo}-${index}`}
                       className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors ${
-                        isAbsent ? "bg-slate-50/30 dark:bg-slate-900/30" : ""
+                        isDuplicate
+                          ? "bg-rose-50/80 dark:bg-rose-950/30"
+                          : isAbsent
+                          ? "bg-slate-50/30 dark:bg-slate-900/30"
+                          : ""
                       }`}
                     >
                       {/* Index */}
@@ -858,7 +898,11 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
 
                       {/* Kit No */}
                       <td className="py-2.5 px-2 sm:px-4 font-bold text-slate-900 dark:text-white tabular-nums">
-                        <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                        <span className={`px-2 py-0.5 rounded-md border ${
+                          isDuplicate
+                            ? "bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-700"
+                            : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700"
+                        }`}>
                           {kitNo}
                         </span>
                       </td>
@@ -890,8 +934,12 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
                               }
                             }}
                             placeholder="0.0"
+                            disabled={isDuplicate}
+                            title={isDuplicate ? "Marks disabled: duplicate Kit No" : undefined}
                             className={`w-full min-h-[42px] px-2 sm:px-3 py-1.5 text-center rounded-xl font-bold text-sm tabular-nums transition-all focus:outline-none focus:ring-2 ${
-                              isInvalid
+                              isDuplicate
+                                ? "bg-rose-100 dark:bg-rose-950/60 text-rose-600 border-2 border-rose-400 cursor-not-allowed opacity-80"
+                              : isInvalid
                                 ? "bg-rose-50 dark:bg-rose-950/40 text-rose-700 border-2 border-rose-500 focus:ring-rose-500"
                                 : isExplicitAbsent
                                 ? "bg-rose-50 dark:bg-rose-950/40 text-rose-700 border border-rose-300 dark:border-rose-800 focus:ring-rose-500"
@@ -908,20 +956,27 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
                         <button
                           type="button"
                           onClick={() => toggleAbsent(kitNo)}
-                          title={isAbsent ? "Click to mark present" : "Click to mark absent"}
+                          disabled={isDuplicate}
+                          title={isDuplicate ? "Marks disabled: duplicate Kit No" : isAbsent ? "Click to mark present" : "Click to mark absent"}
                           className={`min-h-[38px] px-2.5 sm:px-3 py-1 rounded-xl text-xs font-bold transition-all ${
-                            isAbsent
+                            isDuplicate
+                              ? "bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-800 cursor-not-allowed"
+                            : isAbsent
                               ? "bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-800 shadow-sm hover:bg-rose-200 dark:hover:bg-rose-900"
                               : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700"
                           }`}
                         >
-                          {isAbsent ? "ABSENT" : "PRESENT"}
+                          {isDuplicate ? "BLOCKED" : isAbsent ? "ABSENT" : "PRESENT"}
                         </button>
                       </td>
 
                       {/* Real-Time Grade Preview */}
                       <td className="py-2.5 px-2 sm:px-4 text-center font-bold">
-                        {isAbsent ? (
+                        {isDuplicate ? (
+                          <span className="px-2 py-0.5 rounded text-[10px] bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 font-bold border border-rose-300 dark:border-rose-800">
+                            DUPLICATE
+                          </span>
+                        ) : isAbsent ? (
                           <span className="px-2 py-0.5 rounded text-[10px] bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 font-semibold border border-rose-200 dark:border-rose-900/50">
                             AB
                           </span>
@@ -982,7 +1037,7 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
           <button
             type="button"
             onClick={handleSaveMarks}
-            disabled={saving || enrolledStudents.length === 0}
+            disabled={saving || isPreview || enrolledStudents.length === 0}
             className="flex-1 sm:flex-none min-h-[48px] px-6 py-2.5 bg-gradient-to-r from-blue-700 to-blue-900 hover:from-blue-800 hover:to-slate-900 text-white rounded-xl font-bold text-xs sm:text-sm shadow-md shadow-blue-900/20 active:scale-[0.98] transition-all flex items-center justify-center space-x-2 disabled:opacity-50"
           >
             {saving ? (

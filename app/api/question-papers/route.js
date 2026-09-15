@@ -1,6 +1,16 @@
 import { NextResponse } from "next/server";
-import { appendQuestionPaper, updateQuestionPaperStatus } from "@/lib/googleSheets";
+import {
+  appendQuestionPaper,
+  loadFreshDatabaseTabs,
+  updateQuestionPaperStatus,
+} from "@/lib/googleSheets";
 import { getCurrentStaff } from "@/lib/staffAuth";
+import {
+  buildUniqueIndex,
+  canReviewPaper,
+  canSubmitPaper,
+  normalizeValue,
+} from "@/lib/authorization.mjs";
 
 export const dynamic = "force-dynamic";
 
@@ -8,6 +18,9 @@ export async function POST(request) {
   try {
     const current = await getCurrentStaff();
     if (!current) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    if (!current.permissions.recognizedRole) {
+      return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+    }
     const body = await request.json();
     const {
       grade,
@@ -32,6 +45,13 @@ export async function POST(request) {
       );
     }
 
+    if (!canSubmitPaper(current.permissions, grade, subject)) {
+      return NextResponse.json(
+        { success: false, error: "Forbidden: paper is outside your authorized teaching scope." },
+        { status: 403 }
+      );
+    }
+
     const submissionId = `QP-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
 
     const record = {
@@ -46,6 +66,7 @@ export async function POST(request) {
       Text_Content: textContent || "",
       Status: "Pending",
       Admin_Feedback: "",
+      Submitted_By_Teacher_ID: current.staff.Teacher_ID,
     };
 
     await appendQuestionPaper(record);
@@ -68,7 +89,9 @@ export async function PATCH(request) {
   try {
     const current = await getCurrentStaff();
     if (!current) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-    if (!current.permissions.isAdmin) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+    if (!current.permissions.recognizedRole) {
+      return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+    }
     const body = await request.json();
     const { submissionId, status, adminFeedback } = body;
 
@@ -77,6 +100,20 @@ export async function PATCH(request) {
         { success: false, error: "Submission ID and new Status are required." },
         { status: 400 }
       );
+    }
+
+    const db = await loadFreshDatabaseTabs(["Question_Papers_Log"]);
+    const papers = buildUniqueIndex(db.Question_Papers_Log || [], "Submission_ID");
+    const submissionKey = normalizeValue(submissionId);
+    const paper = papers.unique.get(submissionKey);
+    if (!paper || papers.ambiguous.has(submissionKey)) {
+      return NextResponse.json(
+        { success: false, error: "Submission record not found in database." },
+        { status: 404 }
+      );
+    }
+    if (!canReviewPaper(current.permissions, paper)) {
+      return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
     }
 
     const updated = await updateQuestionPaperStatus(

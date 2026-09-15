@@ -1,13 +1,20 @@
 import { NextResponse } from "next/server";
-import { saveOrUpdateMarksLog } from "@/lib/googleSheets";
+import { loadFreshDatabaseTabs, saveOrUpdateMarksLog } from "@/lib/googleSheets";
 import { getCurrentStaff } from "@/lib/staffAuth";
+import {
+  authorizeMarksBatch,
+} from "@/lib/authorization.mjs";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request) {
   try {
-    if (!(await getCurrentStaff())) {
+    const current = await getCurrentStaff();
+    if (!current) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
+    if (!current.permissions.recognizedRole) {
+      return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
     }
     const body = await request.json();
     const { records, examId, subject } = body;
@@ -57,6 +64,15 @@ export async function POST(request) {
       return NextResponse.json(
         { success: false, error: "No valid marks found to save." },
         { status: 400 }
+      );
+    }
+
+    const db = await loadFreshDatabaseTabs(["Students", "Marks_Log"]);
+    const authorization = authorizeMarksBatch(current.permissions, normalized, db);
+    if (!authorization.authorized) {
+      return NextResponse.json(
+        { success: false, error: "Forbidden: marks are outside your authorized teaching scope." },
+        { status: 403 }
       );
     }
 

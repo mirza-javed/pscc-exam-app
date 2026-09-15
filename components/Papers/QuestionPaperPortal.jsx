@@ -77,6 +77,8 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
   const user = effectiveContext.user;
   const perms = effectiveContext.permissions;
   const isAdmin = perms?.isAdmin;
+  const canReviewPapers = perms?.canReviewAllPapers || perms?.canReviewScopedPapers;
+  const isPreview = effectiveContext.isPreview;
   const loggedTeacherName = user?.Full_Name || user?.Name || "Faculty Member";
 
   // Available exam options from exam_scheme or Grading_System
@@ -98,18 +100,9 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
 
   // Available grades
   const availableGrades = useMemo(() => {
-    if (isAdmin) {
-      const allStudents = db.Students || [];
-      const set = new Set();
-      allStudents.forEach((s) => {
-        const g = String(s.Grade || "").trim();
-        if (g) set.add(g);
-      });
-      const list = Array.from(set).sort((a, b) => parseInt(a) - parseInt(b));
-      return list.length > 0 ? list : ["9", "10", "11", "12"];
-    }
-    return perms?.assignedGrades || ["9"];
-  }, [isAdmin, perms, db]);
+    const grades = new Set((perms?.teachingScopes || []).map((scope) => scope.grade));
+    return Array.from(grades).sort((a, b) => parseInt(a) - parseInt(b));
+  }, [perms]);
 
   // Sub tabs: "submit" | "history" | "review"
   const [subTab, setSubTab] = useState("submit");
@@ -393,8 +386,14 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
   // Resolve available subjects for chosen grade
   const availableSubjects = useMemo(() => {
     const gradeSubjects = getSubjectsForGrade(db, selectedGrade);
-    return gradeSubjects.length > 0 ? gradeSubjects : ["English", "Maths", "Physics", "Chemistry"];
-  }, [db, selectedGrade]);
+    const assigned = new Set(
+      (perms?.teachingScopes || [])
+        .filter((scope) => String(scope.grade) === String(selectedGrade))
+        .map((scope) => scope.subject)
+    );
+    const filtered = gradeSubjects.filter((subject) => assigned.has(subject));
+    return filtered.length > 0 ? filtered : Array.from(assigned).sort();
+  }, [db, perms, selectedGrade]);
 
   // Sync selected subject safely
   useEffect(() => {
@@ -425,10 +424,13 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
   // My submissions
   const myPapers = useMemo(() => {
     if (isAdmin) return allPapers;
-    return allPapers.filter(
-      (p) => String(p.Teacher_Name || "").trim().toLowerCase() === loggedTeacherName.toLowerCase()
-    );
-  }, [allPapers, isAdmin, loggedTeacherName]);
+    return allPapers.filter((paper) => {
+      if (paper.Submitted_By_Teacher_ID) {
+        return String(paper.Submitted_By_Teacher_ID).trim() === String(user?.Teacher_ID || "").trim();
+      }
+      return String(paper.Teacher_Name || "").trim().toLowerCase() === loggedTeacherName.toLowerCase();
+    });
+  }, [allPapers, isAdmin, loggedTeacherName, user]);
 
   // Build full structured paper text content (zero duplicate header content)
   const fullPaperText = useMemo(() => {
@@ -472,6 +474,10 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
   // Handle Question Paper Submission
   const handleSubmitPaper = async (e) => {
     e?.preventDefault();
+    if (isPreview) {
+      setToast({ type: "info", message: "Question papers cannot be submitted while previewing another staff member." });
+      return;
+    }
     setSubmitting(true);
     setToast(null);
 
@@ -483,7 +489,6 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
           grade: selectedGrade,
           subject: selectedSubject,
           examId: selectedExam,
-          teacherName: loggedTeacherName,
           submissionType,
           fileUrl: submissionType === "File Upload" ? fileUrl : "",
           textContent: submissionType === "Direct Text" ? fullPaperText : "",
@@ -511,6 +516,10 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
 
   // Handle Admin Status Update (Approve / Request Revision)
   const handleUpdateStatus = async (submissionId, newStatus) => {
+    if (isPreview) {
+      setToast({ type: "info", message: "Paper reviews cannot be changed while previewing another staff member." });
+      return;
+    }
     setUpdatingStatus(true);
     try {
       const res = await fetch("/api/question-papers", {
@@ -592,7 +601,7 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
           <span>My Submissions ({myPapers.length})</span>
         </button>
 
-        {isAdmin && (
+        {canReviewPapers && (
           <button
             onClick={() => setSubTab("review")}
             className={`flex-1 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-1.5 ${
@@ -1187,7 +1196,7 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
               <button
                 type="button"
                 onClick={handleSubmitPaper}
-                disabled={submitting}
+                disabled={submitting || isPreview || availableGrades.length === 0 || availableSubjects.length === 0}
                 className="px-6 py-3 bg-gradient-to-r from-blue-700 to-blue-900 hover:from-blue-800 hover:to-slate-900 text-white rounded-xl font-bold text-xs sm:text-sm shadow-md transition-all flex items-center gap-2 disabled:opacity-50"
               >
                 {submitting ? (
@@ -1336,8 +1345,8 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
         </div>
       )}
 
-      {/* TAB 3: Academic Review Panel (Admin Only) */}
-      {subTab === "review" && isAdmin && (
+      {/* TAB 3: Academic Review Panel */}
+      {subTab === "review" && canReviewPapers && (
         <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
             <div>
@@ -1469,7 +1478,7 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
                       <button
                         type="button"
                         onClick={() => handleUpdateStatus(paper.Submission_ID, "Revision Needed")}
-                        disabled={updatingStatus}
+                        disabled={updatingStatus || isPreview}
                         className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition-all"
                       >
                         Request Revision
@@ -1477,7 +1486,7 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
                       <button
                         type="button"
                         onClick={() => handleUpdateStatus(paper.Submission_ID, "Approved")}
-                        disabled={updatingStatus}
+                        disabled={updatingStatus || isPreview}
                         className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all flex items-center gap-1"
                       >
                         <Check className="w-3.5 h-3.5" />
