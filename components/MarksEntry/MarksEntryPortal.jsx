@@ -28,6 +28,25 @@ import {
 } from "@/lib/models";
 import { calculateGradeInfo } from "@/lib/grading";
 
+const LEGACY_ABSENT_VALUES = new Set(["ab", "a", "absent", "a/b", "n/a", "na", "-"]);
+const STRICT_MARKS_PATTERN = /^\d+(?:\.\d+)?$/;
+
+function canonicalizeStoredMark(value) {
+  const text = String(value ?? "").trim();
+  return LEGACY_ABSENT_VALUES.has(text.toLowerCase()) ? "Absent" : text;
+}
+
+function isExplicitAbsentValue(value) {
+  return String(value ?? "").trim().toLowerCase() === "absent";
+}
+
+function parseStrictMarks(value) {
+  const text = String(value ?? "").trim();
+  if (!STRICT_MARKS_PATTERN.test(text)) return null;
+  const number = Number(text);
+  return Number.isFinite(number) ? number : null;
+}
+
 export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
   const effectiveContext = useAuthStore((state) => state.getEffectiveContext());
   const user = effectiveContext.user;
@@ -180,7 +199,7 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
         rowSubj === String(selectedSubject).trim().toLowerCase() &&
         sId
       ) {
-        initialMap[sId] = String(row.Marks_Obtained || "").trim();
+        initialMap[sId] = canonicalizeStoredMark(row.Marks_Obtained);
         if (row.Submission_ID) {
           subMap[sId] = String(row.Submission_ID).trim();
         }
@@ -221,7 +240,7 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
         rowSubj === String(selectedSubject).trim().toLowerCase() &&
         sId
       ) {
-        initialMap[sId] = String(row.Marks_Obtained || "").trim();
+        initialMap[sId] = canonicalizeStoredMark(row.Marks_Obtained);
       }
     });
 
@@ -253,7 +272,7 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
   // Toggle Absent state
   const toggleAbsent = (kitNo) => {
     const raw = String(marksState[kitNo] !== undefined ? marksState[kitNo] : "").trim();
-    const isCurrentlyAbsent = ["ab", "absent", "a", "a/b", "n/a", "na", "-"].includes(raw.toLowerCase());
+    const isCurrentlyAbsent = isExplicitAbsentValue(raw);
 
     if (isCurrentlyAbsent) {
       // If currently absent, clicking toggles to PRESENT (clears value and focuses input)
@@ -308,13 +327,13 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
       const id = std.Kit_No || std.Student_ID;
       if (isDuplicateKitNo(id)) return;
       const raw = String(marksState[id] !== undefined ? marksState[id] : "").trim();
-      const isExplicitAbsent = ["absent", "ab", "a", "a/b", "n/a", "na", "-"].includes(raw.toLowerCase());
+      const isExplicitAbsent = isExplicitAbsentValue(raw);
 
       if (isExplicitAbsent) {
         absentCount++;
       } else if (raw !== "") {
-        const num = parseFloat(raw);
-        if (!isNaN(num)) {
+        const num = parseStrictMarks(raw);
+        if (num !== null) {
           presentCount++;
           totalScores += num;
         }
@@ -407,13 +426,12 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
       .map((std) => {
       const id = std.Kit_No || std.Student_ID || "";
       const raw = marksState[id] !== undefined ? String(marksState[id]).trim() : "";
-      const isExplicitAbsent = ["absent", "ab", "a", "a/b", "n/a", "na", "-"].includes(raw.toLowerCase());
-      const isBlank = raw === "";
+      const isExplicitAbsent = isExplicitAbsentValue(raw);
       return {
         Kit_No: id,
         Name: std.Name || "",
         Group: std.Group || std.Stream || "",
-        Marks_Obtained: isBlank || isExplicitAbsent ? "Absent" : raw,
+        Marks_Obtained: isExplicitAbsent ? "Absent" : raw,
       };
       });
 
@@ -432,34 +450,17 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
       setToast({ type: "info", message: "Marks cannot be changed while previewing another staff member." });
       return;
     }
-    let numericCount = 0;
     const records = enrolledStudents
       .filter((std) => !isDuplicateKitNo(std.Kit_No || std.Student_ID))
       .map((std) => {
       const id = std.Kit_No || std.Student_ID;
       const raw = marksState[id] !== undefined ? String(marksState[id]).trim() : "";
-      const isExplicitAbsent = ["absent", "ab", "a", "a/b", "n/a", "na", "-"].includes(raw.toLowerCase());
-      
-      let finalMarks = "Absent";
-      if (raw !== "" && !isExplicitAbsent) {
-        const num = parseFloat(raw);
-        if (!isNaN(num)) {
-          finalMarks = String(num);
-          numericCount++;
-        } else {
-          finalMarks = "Absent";
-        }
-      } else {
-        // Any blank Score row is treated as Absent!
-        finalMarks = "Absent";
-      }
-
+      const isExplicitAbsent = isExplicitAbsentValue(raw);
       return {
         Submission_ID: existingSubmissions[id] || null, // PRESERVES previous Submission_ID!
         Kit_No: id,
-        Exam_ID: selectedExam,
-        Subject: selectedSubject,
-        Marks_Obtained: finalMarks,
+        attendance: isExplicitAbsent ? "absent" : "present",
+        Marks_Obtained: isExplicitAbsent ? undefined : raw,
       };
       });
 
@@ -468,23 +469,17 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
       return;
     }
 
-    if (numericCount === 0 && !hasExistingMarks) {
-      setToast({ type: "info", message: "Please enter at least one cadet score before saving." });
-      return;
-    }
-
-    // Validate scores exceeding max marks
+    // Give immediate feedback; the API repeats all validation authoritatively.
     const invalidScores = records.filter((r) => {
-      const raw = String(r.Marks_Obtained).toLowerCase();
-      if (["ab", "absent", "a", "a/b", "n/a", "na", "-"].includes(raw)) return false;
-      const num = parseFloat(raw);
-      return isNaN(num) || num < 0 || num > maxMarks;
+      if (r.attendance === "absent") return false;
+      const num = parseStrictMarks(r.Marks_Obtained);
+      return num === null || num < 0 || num > maxMarks;
     });
 
     if (invalidScores.length > 0) {
       setToast({
         type: "error",
-        message: `Found ${invalidScores.length} score(s) exceeding Max Marks (${maxMarks}) or negative. Please correct highlighted rows.`,
+        message: `Found ${invalidScores.length} missing or invalid score(s). Enter a number from 0 to ${maxMarks}, or explicitly mark the cadet absent.`,
       });
       return;
     }
@@ -497,13 +492,19 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
         body: JSON.stringify({
           records,
           examId: selectedExam,
+          grade: selectedGrade,
+          section: selectedSection,
           subject: selectedSubject,
         }),
       });
 
       const data = await res.json();
       if (!data.success) {
-        throw new Error(data.error || "Failed to save marks.");
+        const firstDetail = Array.isArray(data.details) ? data.details[0] : null;
+        const detailMessage = firstDetail
+          ? `${firstDetail.row ? `Row ${firstDetail.row}: ` : ""}${firstDetail.message}`
+          : "";
+        throw new Error(detailMessage || data.error || "Failed to save marks.");
       }
 
       // Clear local draft on successful save
@@ -870,12 +871,12 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
                   const kitNo = std.Kit_No || std.Student_ID;
                   const isDuplicate = isDuplicateKitNo(kitNo);
                   const currentVal = marksState[kitNo] !== undefined ? String(marksState[kitNo]).trim() : "";
-                  const isExplicitAbsent = ["absent", "ab", "a", "a/b", "n/a", "na", "-"].includes(currentVal.toLowerCase());
+                  const isExplicitAbsent = isExplicitAbsentValue(currentVal);
                   const isBlank = currentVal === "";
                   const isAbsent = isExplicitAbsent;
-                  const numVal = parseFloat(currentVal);
-                  const isNumeric = !isNaN(numVal) && !isExplicitAbsent && !isBlank;
-                  const isInvalid = isNumeric && (numVal < 0 || numVal > maxMarks);
+                  const numVal = parseStrictMarks(currentVal);
+                  const isNumeric = numVal !== null && !isExplicitAbsent && !isBlank;
+                  const isInvalid = !isExplicitAbsent && !isBlank && (!isNumeric || numVal < 0 || numVal > maxMarks);
 
                   const pct = isNumeric && maxMarks > 0 ? (numVal / maxMarks) * 100 : 0;
                   const gradeInfo = isNumeric ? calculateGradeInfo(pct, db.Grading_System) : null;

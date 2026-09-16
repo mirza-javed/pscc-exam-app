@@ -4,8 +4,40 @@ import { getCurrentStaff } from "@/lib/staffAuth";
 import {
   authorizeMarksBatch,
 } from "@/lib/authorization.mjs";
+import { validateMarksSubmission } from "@/lib/marksValidation.mjs";
 
 export const dynamic = "force-dynamic";
+
+function buildAuthorizationRecords(body) {
+  if (!body || typeof body !== "object" || !Array.isArray(body.records)) return null;
+  const examId = typeof body.examId === "string" || typeof body.examId === "number"
+    ? String(body.examId).trim()
+    : "";
+  const subject = typeof body.subject === "string" || typeof body.subject === "number"
+    ? String(body.subject).trim()
+    : "";
+  if (!examId || !subject || body.records.length === 0) return null;
+
+  const records = [];
+  for (const item of body.records) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+    const rawKitNo = item.Kit_No ?? item.Student_ID;
+    if (typeof rawKitNo !== "string" && typeof rawKitNo !== "number") return null;
+    const kitNo = String(rawKitNo).trim();
+    if (!kitNo) return null;
+    const candidateSubmissionId =
+      typeof item.Submission_ID === "string" ? item.Submission_ID.trim() : "";
+    records.push({
+      Submission_ID: /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(candidateSubmissionId)
+        ? candidateSubmissionId
+        : "",
+      Kit_No: kitNo,
+      Exam_ID: examId,
+      Subject: subject,
+    });
+  }
+  return records;
+}
 
 export async function POST(request) {
   try {
@@ -16,67 +48,48 @@ export async function POST(request) {
     if (!current.permissions.recognizedRole) {
       return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
     }
-    const body = await request.json();
-    const { records, examId, subject } = body;
-
-    if (!Array.isArray(records) || records.length === 0) {
+    let body;
+    try {
+      body = await request.json();
+    } catch {
       return NextResponse.json(
-        { success: false, error: "No student mark records provided for saving." },
+        { success: false, error: "Invalid JSON request body.", code: "INVALID_JSON" },
         { status: 400 }
       );
     }
 
-    const absentKeywords = new Set(["ab", "a", "absent", "a/b", "n/a", "na", "-"]);
-
-    // Normalize records while preserving original Submission_ID if present
-    // Any blank Score row is treated as Absent
-    const normalized = [];
-    for (const item of records) {
-      const kitNo = String(item.Kit_No || item.Student_ID || "").trim();
-      if (!kitNo) continue;
-
-      const raw = String(item.Marks_Obtained !== undefined ? item.Marks_Obtained : "").trim();
-
-      let canonical = "Absent";
-      if (!raw || raw.toLowerCase() === "nan") {
-        canonical = "Absent";
-      } else if (absentKeywords.has(raw.toLowerCase())) {
-        canonical = "Absent";
-      } else {
-        const num = parseFloat(raw);
-        if (isNaN(num)) {
-          canonical = "Absent";
-        } else {
-          canonical = String(num);
-        }
+    const db = await loadFreshDatabaseTabs(["Students", "Marks_Log", "exam_scheme"]);
+    const authorizationRecords = buildAuthorizationRecords(body);
+    if (authorizationRecords) {
+      const authorization = authorizeMarksBatch(current.permissions, authorizationRecords, db);
+      if (!authorization.authorized) {
+        return NextResponse.json(
+          { success: false, error: "Forbidden: marks are outside your authorized teaching scope." },
+          { status: 403 }
+        );
       }
-
-      normalized.push({
-        Submission_ID: String(item.Submission_ID || "").trim(),
-        Kit_No: kitNo,
-        Exam_ID: String(examId || item.Exam_ID || "").trim(),
-        Subject: String(subject || item.Subject || "").trim(),
-        Marks_Obtained: canonical,
-      });
     }
 
-    if (normalized.length === 0) {
+    const validation = validateMarksSubmission(body, db);
+    if (!validation.valid) {
       return NextResponse.json(
-        { success: false, error: "No valid marks found to save." },
-        { status: 400 }
+        {
+          success: false,
+          error: "Marks submission contains validation errors.",
+          code: "MARKS_VALIDATION_FAILED",
+          details: validation.errors,
+        },
+        { status: 422 }
       );
     }
 
-    const db = await loadFreshDatabaseTabs(["Students", "Marks_Log"]);
-    const authorization = authorizeMarksBatch(current.permissions, normalized, db);
-    if (!authorization.authorized) {
-      return NextResponse.json(
-        { success: false, error: "Forbidden: marks are outside your authorized teaching scope." },
-        { status: 403 }
-      );
+    // Structurally valid requests always produce authorization records above.
+    // This defensive check prevents future schema changes from bypassing scope enforcement.
+    if (!authorizationRecords) {
+      return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
     }
 
-    const result = await saveOrUpdateMarksLog(normalized);
+    const result = await saveOrUpdateMarksLog(validation.records);
 
     const message =
       result.updatedCount > 0 && result.insertedCount > 0
@@ -95,7 +108,7 @@ export async function POST(request) {
   } catch (error) {
     console.error("Marks save error:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to save marks to Google Sheets" },
+      { success: false, error: "Unable to save marks at this time." },
       { status: 500 }
     );
   }
