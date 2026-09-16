@@ -2,6 +2,7 @@
   "name": "pscc-exam-portal",
   "version": "2.0.0",
   "private": true,
+  "type": "module",
   "description": "Mobile-first Examination Management Portal for Pakistan Steel Cadet College Karachi deployed on Vercel with Google Sheets API",
   "scripts": {
     "dev": "next dev",

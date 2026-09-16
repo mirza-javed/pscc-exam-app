@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import {
   FileText,
   Upload,
@@ -377,6 +377,7 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
   const [fileUrl, setFileUrl] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [toast, setToast] = useState(null);
+  const submissionRequestIdRef = useRef(null);
 
   // Admin Review State
   const [selectedReviewPaper, setSelectedReviewPaper] = useState(null);
@@ -482,6 +483,8 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
     setToast(null);
 
     try {
+      const requestId = submissionRequestIdRef.current || crypto.randomUUID();
+      submissionRequestIdRef.current = requestId;
       const res = await fetch("/api/question-papers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -492,13 +495,19 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
           submissionType,
           fileUrl: submissionType === "File Upload" ? fileUrl : "",
           textContent: submissionType === "Direct Text" ? fullPaperText : "",
+          requestId,
         }),
       });
 
       const data = await res.json();
       if (!data.success) {
-        throw new Error(data.error || "Failed to submit paper.");
+        if (res.status < 500) submissionRequestIdRef.current = null;
+        const error = new Error(data.error || "Failed to submit paper.");
+        error.status = res.status;
+        throw error;
       }
+
+      submissionRequestIdRef.current = null;
 
       setToast({
         type: "success",
@@ -1181,6 +1190,7 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
                     type="url"
                     value={fileUrl}
                     onChange={(e) => setFileUrl(e.target.value)}
+                    maxLength={2048}
                     placeholder="https://drive.google.com/file/d/.../view?usp=sharing"
                     className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm font-semibold text-slate-900 dark:text-white"
                   />
@@ -1467,6 +1477,7 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
                       type="text"
                       placeholder="Add reviewer feedback or revision notes..."
                       value={selectedReviewPaper === paper.Submission_ID ? adminFeedbackInput : ""}
+                      maxLength={2000}
                       onChange={(e) => {
                         setSelectedReviewPaper(paper.Submission_ID);
                         setAdminFeedbackInput(e.target.value);
@@ -1478,7 +1489,7 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
                       <button
                         type="button"
                         onClick={() => handleUpdateStatus(paper.Submission_ID, "Revision Needed")}
-                        disabled={updatingStatus || isPreview}
+                        disabled={updatingStatus || isPreview || paper.Status !== "Pending"}
                         className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition-all"
                       >
                         Request Revision
@@ -1486,7 +1497,7 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
                       <button
                         type="button"
                         onClick={() => handleUpdateStatus(paper.Submission_ID, "Approved")}
-                        disabled={updatingStatus || isPreview}
+                        disabled={updatingStatus || isPreview || paper.Status !== "Pending"}
                         className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all flex items-center gap-1"
                       >
                         <Check className="w-3.5 h-3.5" />

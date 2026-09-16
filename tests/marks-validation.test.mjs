@@ -173,3 +173,15 @@ test("rejects malformed request structure", () => {
   assert.equal(validateMarksSubmission(body([]), db).valid, false);
   assert.equal(validateMarksSubmission(body([null]), db).valid, false);
 });
+
+test("rejects formula-like identifiers and oversized marks batches", () => {
+  const formula = validateMarksSubmission(
+    body([present("100", "20")], { examId: " \t=IMPORTDATA(\"https://example.test\")" }),
+    db
+  );
+  assert.ok(codes(formula).includes("FORMULA_LIKE_VALUE"));
+
+  const records = Array.from({ length: 501 }, (_, index) => present(String(index + 1000), "1"));
+  const oversized = validateMarksSubmission(body(records), db);
+  assert.ok(codes(oversized).includes("TOO_MANY_RECORDS"));
+});

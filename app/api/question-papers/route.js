@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   appendQuestionPaper,
   loadFreshDatabaseTabs,
+  SheetWriteError,
   updateQuestionPaperStatus,
 } from "@/lib/googleSheets";
 import { getCurrentStaff } from "@/lib/staffAuth";
@@ -11,39 +12,49 @@ import {
   canSubmitPaper,
   normalizeValue,
 } from "@/lib/authorization.mjs";
+import {
+  validatePaperReview,
+  validatePaperSubmission,
+} from "@/lib/paperValidation.mjs";
+import { readJsonBody, RequestBodyError } from "@/lib/requestBody.mjs";
 
 export const dynamic = "force-dynamic";
 
+function requestBodyErrorResponse(error) {
+  return NextResponse.json(
+    { success: false, error: error.message, code: error.code },
+    { status: error.status }
+  );
+}
+
+function validationErrorResponse(code, errors, status = 422) {
+  return NextResponse.json(
+    { success: false, error: "Request validation failed.", code, details: errors },
+    { status }
+  );
+}
+
 export async function POST(request) {
+  let current = null;
   try {
-    const current = await getCurrentStaff();
+    current = await getCurrentStaff();
     if (!current) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     if (!current.permissions.recognizedRole) {
       return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
     }
-    const body = await request.json();
-    const {
-      grade,
-      subject,
-      examId,
-      submissionType,
-      fileUrl,
-      textContent,
-    } = body;
-
-    if (!grade || !subject || !examId) {
-      return NextResponse.json(
-        { success: false, error: "Please provide Grade, Subject, and Examination Term." },
-        { status: 400 }
-      );
+    let body;
+    try {
+      body = await readJsonBody(request);
+    } catch (error) {
+      if (error instanceof RequestBodyError) return requestBodyErrorResponse(error);
+      throw error;
     }
 
-    if (submissionType === "Direct Text" && !textContent?.trim()) {
-      return NextResponse.json(
-        { success: false, error: "Please enter examination paper questions and content." },
-        { status: 400 }
-      );
+    const validation = validatePaperSubmission(body);
+    if (!validation.valid) {
+      return validationErrorResponse("PAPER_VALIDATION_FAILED", validation.errors);
     }
+    const { grade, subject, examId, submissionType, requestId, fileUrl, textContent } = validation.value;
 
     if (!canSubmitPaper(current.permissions, grade, subject)) {
       return NextResponse.json(
@@ -52,7 +63,7 @@ export async function POST(request) {
       );
     }
 
-    const submissionId = `QP-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    const submissionId = `QP-${requestId}`;
 
     const record = {
       Submission_ID: submissionId,
@@ -69,42 +80,52 @@ export async function POST(request) {
       Submitted_By_Teacher_ID: current.staff.Teacher_ID,
     };
 
-    await appendQuestionPaper(record);
+    const result = await appendQuestionPaper(record);
 
     return NextResponse.json({
       success: true,
       submissionId,
+      idempotent: result.idempotent,
       message: "Question paper successfully submitted for academic review.",
     });
   } catch (error) {
-    console.error("Error submitting question paper:", error);
+    console.error("Question paper submission failed:", {
+      teacherId: current?.staff?.Teacher_ID || null,
+      code: error?.code || null,
+      error,
+    });
+    if (error instanceof SheetWriteError && error.code === "SUBMISSION_ID_CONFLICT") {
+      return NextResponse.json(
+        { success: false, error: "This submission request conflicts with an existing record.", code: error.code },
+        { status: 409 }
+      );
+    }
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to submit question paper" },
+      { success: false, error: "Unable to submit the question paper at this time." },
       { status: 500 }
     );
   }
 }
 
 export async function PATCH(request) {
+  let current = null;
   try {
-    const current = await getCurrentStaff();
+    current = await getCurrentStaff();
     if (!current) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     if (!current.permissions.recognizedRole) {
       return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
     }
-    const body = await request.json();
-    const { submissionId, status, adminFeedback } = body;
-
-    if (!submissionId || !status) {
-      return NextResponse.json(
-        { success: false, error: "Submission ID and new Status are required." },
-        { status: 400 }
-      );
+    let body;
+    try {
+      body = await readJsonBody(request);
+    } catch (error) {
+      if (error instanceof RequestBodyError) return requestBodyErrorResponse(error);
+      throw error;
     }
 
     const db = await loadFreshDatabaseTabs(["Question_Papers_Log"]);
     const papers = buildUniqueIndex(db.Question_Papers_Log || [], "Submission_ID");
-    const submissionKey = normalizeValue(submissionId);
+    const submissionKey = normalizeValue(body?.submissionId);
     const paper = papers.unique.get(submissionKey);
     if (!paper || papers.ambiguous.has(submissionKey)) {
       return NextResponse.json(
@@ -116,13 +137,27 @@ export async function PATCH(request) {
       return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
     }
 
-    const updated = await updateQuestionPaperStatus(
+    const validation = validatePaperReview(body, paper);
+    if (!validation.valid) {
+      const transitionError = validation.errors.some((error) =>
+        ["INVALID_STATUS_TRANSITION", "INVALID_CURRENT_STATUS"].includes(error.code)
+      );
+      return validationErrorResponse(
+        transitionError ? "INVALID_STATUS_TRANSITION" : "PAPER_REVIEW_VALIDATION_FAILED",
+        validation.errors,
+        transitionError ? 409 : 422
+      );
+    }
+    const { submissionId, status, adminFeedback } = validation.value;
+
+    const result = await updateQuestionPaperStatus(
       submissionId,
       status,
-      adminFeedback || ""
+      adminFeedback,
+      paper
     );
 
-    if (!updated) {
+    if (!result.found) {
       return NextResponse.json(
         { success: false, error: "Submission record not found in database." },
         { status: 404 }
@@ -131,12 +166,26 @@ export async function PATCH(request) {
 
     return NextResponse.json({
       success: true,
+      idempotent: result.idempotent,
       message: `Submission status updated to '${status}'.`,
     });
   } catch (error) {
-    console.error("Error updating question paper:", error);
+    console.error("Question paper review failed:", {
+      teacherId: current?.staff?.Teacher_ID || null,
+      code: error?.code || null,
+      error,
+    });
+    if (
+      error instanceof SheetWriteError &&
+      ["PAPER_CHANGED", "INVALID_STATUS_TRANSITION"].includes(error.code)
+    ) {
+      return NextResponse.json(
+        { success: false, error: "The paper changed before this review could be saved. Refresh and try again.", code: error.code },
+        { status: 409 }
+      );
+    }
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to update review status" },
+      { success: false, error: "Unable to update the paper review at this time." },
       { status: 500 }
     );
   }

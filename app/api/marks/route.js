@@ -5,6 +5,7 @@ import {
   authorizeMarksBatch,
 } from "@/lib/authorization.mjs";
 import { validateMarksSubmission } from "@/lib/marksValidation.mjs";
+import { readJsonBody, RequestBodyError } from "@/lib/requestBody.mjs";
 
 export const dynamic = "force-dynamic";
 
@@ -50,11 +51,12 @@ export async function POST(request) {
     }
     let body;
     try {
-      body = await request.json();
-    } catch {
+      body = await readJsonBody(request);
+    } catch (error) {
+      if (!(error instanceof RequestBodyError)) throw error;
       return NextResponse.json(
-        { success: false, error: "Invalid JSON request body.", code: "INVALID_JSON" },
-        { status: 400 }
+        { success: false, error: error.message, code: error.code },
+        { status: error.status }
       );
     }
 
