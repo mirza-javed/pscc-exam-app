@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import * as XLSX from "xlsx";
 import {
   BarChart,
@@ -36,6 +36,8 @@ import {
 } from "lucide-react";
 import { buildClassAnalyticsData } from "@/lib/analytics";
 import { downloadMeritMasterSheetPDF } from "@/lib/pdfGenerator";
+import { getAcademicSession, getAssessment } from "@/lib/examinationResults.mjs";
+import { formatAssessment } from "@/lib/resultPresentation.mjs";
 
 // Custom data label renderer for Subject Average Performance Bar Chart
 const renderSubjectBarLabel = (props) => {
@@ -76,20 +78,20 @@ const renderGradeBarLabel = (props) => {
 };
 
 export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
-  // Available exam options from exam_scheme or Grading_System
+  // Result calculations are driven only by configured exam schemes.
   const examOptions = useMemo(() => {
     const es = db.exam_scheme || [];
-    const gs = db.Grading_System || [];
     const set = new Set(["All Exams"]);
     es.forEach((r) => {
       const eId = String(r.Exam_ID || r.Exam_Name || "").trim();
       if (eId) set.add(eId);
     });
-    gs.forEach((r) => {
-      const eId = String(r.Exam_ID || r.Exam_Name || "").trim();
-      if (eId) set.add(eId);
-    });
     return Array.from(set);
+  }, [db]);
+
+  const academicSessions = useMemo(() => {
+    const sessions = new Set((db.exam_scheme || []).map(getAcademicSession).filter(Boolean));
+    return Array.from(sessions).sort().reverse();
   }, [db]);
 
   // Available grades
@@ -107,9 +109,16 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
   const [selectedGrade, setSelectedGrade] = useState(availableGrades[0] || "9");
   const [selectedSection, setSelectedSection] = useState("A");
   const [selectedExam, setSelectedExam] = useState("All Exams");
+  const [selectedSession, setSelectedSession] = useState(academicSessions[0] || "");
   const [searchQuery, setSearchQuery] = useState("");
   const [sortField, setSortField] = useState("meritRank");
   const [sortDirection, setSortDirection] = useState("asc"); // "asc" | "desc"
+
+  useEffect(() => {
+    if (academicSessions.length > 0 && !academicSessions.includes(selectedSession)) {
+      setSelectedSession(academicSessions[0]);
+    }
+  }, [academicSessions, selectedSession]);
 
   // Available sections for chosen grade
   const availableSections = useMemo(() => {
@@ -127,10 +136,10 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
 
   // Compute analytics data for current filter
   const analytics = useMemo(() => {
-    return buildClassAnalyticsData(db, selectedGrade, selectedSection, selectedExam);
-  }, [db, selectedGrade, selectedSection, selectedExam]);
+    return buildClassAnalyticsData(db, selectedGrade, selectedSection, selectedExam, selectedSession);
+  }, [db, selectedGrade, selectedSection, selectedExam, selectedSession]);
 
-  const { kpis, subjects, meritGrid, subjectAverages, gradeDistribution, empty } = analytics;
+  const { kpis, subjects, assessmentColumns, meritGrid, subjectAverages, gradeDistribution, empty } = analytics;
 
   // Top 3 Merit Rankers
   const topRankers = useMemo(() => {
@@ -165,12 +174,12 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
       let aVal = a[sortField];
       let bVal = b[sortField];
 
-      // Handle nested subject scores sorting
-      if (subjects.includes(sortField)) {
-        aVal = a.scores?.[sortField]?.obtained;
-        bVal = b.scores?.[sortField]?.obtained;
-        if (aVal === "AB" || aVal === undefined) aVal = -1;
-        if (bVal === "AB" || bVal === undefined) bVal = -1;
+      const column = assessmentColumns.find((item) => item.key === sortField);
+      if (column) {
+        aVal = getAssessment(a, column)?.obtained;
+        bVal = getAssessment(b, column)?.obtained;
+        if (aVal === undefined || aVal === null) aVal = -1;
+        if (bVal === undefined || bVal === null) bVal = -1;
       }
 
       if (aVal === undefined || aVal === null) aVal = "";
@@ -185,7 +194,7 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
     });
 
     return list;
-  }, [meritGrid, searchQuery, sortField, sortDirection, subjects]);
+  }, [meritGrid, searchQuery, sortField, sortDirection, assessmentColumns]);
 
   // Export Merit Sheet as Excel (.xlsx) - with Legal Landscape page setup
   const exportExcel = () => {
@@ -202,20 +211,22 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
         Group: c.Group,
       };
 
-      subjects.forEach((subj) => {
-        const scoreObj = c.scores?.[subj];
-        obj[subj] = scoreObj
-          ? scoreObj.isAbsent
-            ? "AB"
-            : `${scoreObj.obtained} / ${scoreObj.maxMarks}`
-          : "-";
+      assessmentColumns.forEach((column) => {
+        const scoreObj = getAssessment(c, column);
+        const presentation = formatAssessment(scoreObj);
+        obj[column.label] = presentation.state === "PRESENT"
+          ? `${presentation.obtained} / ${presentation.maximum}`
+          : presentation.state === "ABSENT"
+          ? `ABSENT / ${presentation.maximum}`
+          : presentation.obtained;
       });
 
-      obj["Total Marks"] = `${c.totalObtained} / ${c.totalMaxMarks}`;
-      obj["Aggregate %"] = `${c.aggregatePct}%`;
-      obj["Grade"] = c.letterGrade;
+      obj["Total Marks"] = c.isFinal ? `${c.totalObtained} / ${c.totalMaxMarks}` : "-";
+      obj["Aggregate %"] = c.isFinal ? `${c.aggregatePct}%` : "-";
+      obj["Grade"] = c.letterGrade || "-";
       obj["Status"] = c.passStatus;
       obj["Absences"] = c.absentCount;
+      obj["Publication Status"] = c.publicationStatus || "Untracked";
 
       return obj;
     });
@@ -230,7 +241,7 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
       { wch: 12 }, // Kit #
       { wch: 28 }, // Name
       { wch: 14 }, // Group
-      ...subjects.map((s) => ({ wch: Math.max(s.length + 4, 12) })),
+      ...assessmentColumns.map((column) => ({ wch: Math.max(column.label.length + 4, 14) })),
       { wch: 16 }, // Total Marks
       { wch: 14 }, // Aggregate %
       { wch: 10 }, // Grade
@@ -260,6 +271,7 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
       section: selectedSection,
       exam: selectedExam,
       subjects,
+      assessmentColumns,
       subjectAverages,
       kpis,
     });
@@ -304,7 +316,7 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
         </div>
 
         {/* Filter Dropdowns */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 sm:gap-4">
           <div className="space-y-1">
             <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
               Grade / Class
@@ -317,6 +329,20 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
               {availableGrades.map((g, idx) => (
                 <option key={idx} value={g}>Grade {g}</option>
               ))}
+            </select>
+          </div>
+
+          <div className="space-y-1">
+            <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+              Academic Session / Year
+            </label>
+            <select
+              value={selectedSession}
+              onChange={(e) => setSelectedSession(e.target.value)}
+              className="w-full min-h-[44px] px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-600"
+            >
+              {academicSessions.length === 0 && <option value="">Not configured</option>}
+              {academicSessions.map((session) => <option key={session} value={session}>{session}</option>)}
             </select>
           </div>
 
@@ -492,7 +518,7 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
                   <BarChart data={subjectAverages} margin={{ top: 25, right: 10, left: -15, bottom: 25 }}>
                     <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
                     <XAxis
-                      dataKey="subject"
+                      dataKey="label"
                       interval={0}
                       angle={-25}
                       textAnchor="end"
@@ -831,14 +857,14 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
                     <th className="py-3 px-3 hidden sm:table-cell w-20">Group</th>
 
                     {/* Dynamic Subject Columns */}
-                    {subjects.map((subj) => (
+                    {assessmentColumns.map((column) => (
                       <th
-                        key={subj}
-                        onClick={() => handleSort(subj)}
+                        key={column.key}
+                        onClick={() => handleSort(column.key)}
                         className="py-3 px-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 text-center min-w-[85px]"
                       >
                         <div className="flex items-center justify-center gap-1">
-                          <span className="truncate max-w-[70px]" title={subj}>{subj}</span>
+                          <span className="truncate max-w-[110px]" title={column.label}>{column.label}</span>
                           <ArrowUpDown className="w-2.5 h-2.5 opacity-60" />
                         </div>
                       </th>
@@ -913,28 +939,31 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
                       </td>
 
                       {/* Dynamic Subject Columns */}
-                      {subjects.map((subj) => {
-                        const scoreObj = cadet.scores?.[subj];
+                      {assessmentColumns.map((column) => {
+                        const scoreObj = getAssessment(cadet, column);
                         if (!scoreObj) {
                           return (
-                            <td key={subj} className="py-2.5 px-3 text-center text-slate-300 dark:text-slate-600">
+                            <td key={column.key} className="py-2.5 px-3 text-center text-slate-300 dark:text-slate-600">
                               -
                             </td>
                           );
                         }
                         if (scoreObj.isAbsent) {
                           return (
-                            <td key={subj} className="py-2.5 px-3 text-center">
+                            <td key={column.key} className="py-2.5 px-3 text-center">
                               <span className="px-1.5 py-0.5 rounded text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-500 font-bold">
                                 AB
                               </span>
                             </td>
                           );
                         }
+                        if (scoreObj.state !== "PRESENT") {
+                          return <td key={column.key} className="py-2.5 px-3 text-center text-rose-600 font-bold">{scoreObj.state}</td>;
+                        }
                         const isFail = scoreObj.pct < 40;
                         return (
                           <td
-                            key={subj}
+                            key={column.key}
                             className={`py-2.5 px-3 text-center font-bold tabular-nums ${
                               isFail ? "text-rose-600 dark:text-rose-400" : "text-slate-900 dark:text-white"
                             }`}
@@ -946,19 +975,19 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
 
                       {/* Total */}
                       <td className="py-2.5 px-3 text-center font-extrabold text-slate-900 dark:text-white tabular-nums">
-                        {cadet.totalObtained}
-                        <span className="text-[10px] font-normal text-slate-400">/{cadet.totalMaxMarks}</span>
+                        {cadet.isFinal ? cadet.totalObtained : "-"}
+                        {cadet.isFinal && <span className="text-[10px] font-normal text-slate-400">/{cadet.totalMaxMarks}</span>}
                       </td>
 
                       {/* Aggregate % */}
                       <td className="py-2.5 px-3 text-center font-extrabold text-blue-700 dark:text-blue-400 tabular-nums">
-                        {cadet.aggregatePct}%
+                        {cadet.isFinal ? `${cadet.aggregatePct}%` : "-"}
                       </td>
 
                       {/* Letter Grade */}
                       <td className="py-2.5 px-3 text-center font-bold">
                         <span className="px-1.5 py-0.5 rounded text-[10px] bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 font-extrabold">
-                          {cadet.letterGrade}
+                          {cadet.letterGrade || "-"}
                         </span>
                       </td>
 

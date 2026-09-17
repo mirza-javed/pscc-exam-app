@@ -120,7 +120,7 @@ test("paper review is global for approved roles and scoped for Section_Head", ()
   );
 });
 
-test("database projection removes records outside teacher scope and all staff rows", () => {
+test("database projection exposes overall class results while keeping other classes hidden", () => {
   const staff = { Teacher_ID: "T-1", Full_Name: "Teacher One", Role: "Teacher" };
   const teacher = permissions();
   const db = {
@@ -139,6 +139,10 @@ test("database projection removes records outside teacher scope and all staff ro
       { Submission_ID: "P-1", Submitted_By_Teacher_ID: "T-1", Grade: "9", Subject: "Physics" },
       { Submission_ID: "P-2", Submitted_By_Teacher_ID: "T-2", Grade: "9", Subject: "Physics" },
     ],
+    Result_Publications: [
+      { Publication_Event_ID: "R-1", Kit_No: "100", Result_Status: "Published" },
+      { Publication_Event_ID: "R-2", Kit_No: "101", Result_Status: "Published" },
+    ],
     exam_scheme: [
       { Grade: "9", Subject: "Physics" },
       { Grade: "9", Subject: "Chemistry" },
@@ -146,10 +150,18 @@ test("database projection removes records outside teacher scope and all staff ro
   };
   const projected = projectDatabase(db, staff, teacher);
   assert.deepEqual(projected.Students.map((row) => row.Kit_No), ["100"]);
-  assert.deepEqual(projected.Marks_Log.map((row) => row.Submission_ID), ["S-1"]);
+  assert.deepEqual(projected.Marks_Log.map((row) => row.Submission_ID), ["S-1", "S-2"]);
   assert.deepEqual(projected.Question_Papers_Log.map((row) => row.Submission_ID), ["P-1"]);
+  assert.deepEqual(projected.Result_Publications.map((row) => row.Publication_Event_ID), ["R-1"]);
   assert.equal(projected.Staff_Directory.length, 0);
-  assert.deepEqual(projected.exam_scheme.map((row) => row.Subject), ["Physics"]);
+  assert.deepEqual(projected.exam_scheme.map((row) => row.Subject), ["Physics", "Chemistry"]);
+});
+
+test("broader assigned-class read scope does not broaden subject-scoped writes", () => {
+  const teacher = permissions();
+  const assignedStudent = { Kit_No: "100", Grade: "9", Section: "A" };
+  assert.equal(canReadMark(teacher, assignedStudent, { Subject: "Chemistry" }), true);
+  assert.equal(canWriteMark(teacher, assignedStudent, "Chemistry"), false);
 });
 
 test("ambiguous student identifiers are flagged and their marks remain hidden", () => {

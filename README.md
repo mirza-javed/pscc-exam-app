@@ -31,6 +31,16 @@ tests/           Node.js tests
 docs/            Setup, architecture, plans, and project guidance
 ```
 
+## Documentation
+
+- [`docs/authentication-setup.md`](docs/authentication-setup.md) - Google Sign-In, Auth.js, staff approval, and environment setup.
+- [`docs/EXAMINATION_RULES.md`](docs/EXAMINATION_RULES.md) - authoritative examination, grading, completeness, ranking, and publication rules.
+- [`docs/exam_id_naming_conventions.md`](docs/exam_id_naming_conventions.md) - examination identifier conventions.
+- [`docs/exam_scheme_template.csv`](docs/exam_scheme_template.csv), [`docs/result_publications_template.csv`](docs/result_publications_template.csv), and [`docs/exam_id_suggestions.csv`](docs/exam_id_suggestions.csv) - Google Sheets schema and planning templates.
+- [`docs/improvements_recommended_by_codex.md`](docs/improvements_recommended_by_codex.md) - prioritized security, correctness, architecture, and testing roadmap.
+- [`docs/codex-session-summary.md`](docs/codex-session-summary.md) - current implementation and validation handoff notes.
+- [`docs/ui-ux-pro-max-recommendations.md`](docs/ui-ux-pro-max-recommendations.md) - historical migration and design rationale; Next.js is now the only supported runtime.
+
 ## Local development
 
 Requirements:
@@ -50,7 +60,7 @@ Open <http://localhost:3000>. See [`docs/authentication-setup.md`](docs/authenti
 
 ```bash
 npm run build
-node --test tests/auth.test.mjs
+node --test tests/*.test.mjs
 ```
 
 ## Deployment

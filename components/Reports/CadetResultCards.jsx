@@ -24,29 +24,33 @@ import {
 } from "lucide-react";
 import { buildClassAnalyticsData } from "@/lib/analytics";
 import { PSCC_LOGO_DATA_URI } from "@/lib/logo";
-import { filterSubjectsForCadet } from "@/lib/models";
+import { getAcademicSession, getAssessment } from "@/lib/examinationResults.mjs";
+import { useAuthStore } from "@/lib/store";
+import { buildResultRows, buildResultSummary, formatAssessment } from "@/lib/resultPresentation.mjs";
 import {
   downloadCadetResultCardPDF,
   downloadBatchResultCardsPDF,
   generateCadetResultCardPDFBlob,
 } from "@/lib/pdfGenerator";
 
-export default function CadetResultCards({ db = {} }) {
-  // Available exam options from exam_scheme or Grading_System
+export default function CadetResultCards({ db = {}, onPublicationSaved }) {
+  const effectiveContext = useAuthStore((state) => state.getEffectiveContext());
+  const canPublishResults = effectiveContext.permissions?.canWriteAllMarks && !effectiveContext.isPreview;
+  // Result calculations are driven only by configured exam schemes.
   const examOptions = useMemo(() => {
     const es = db.exam_scheme || [];
-    const gs = db.Grading_System || [];
-    const set = new Set();
+    const set = new Set(["All Exams"]);
     es.forEach((r) => {
       const eId = String(r.Exam_ID || r.Exam_Name || "").trim();
       if (eId) set.add(eId);
     });
-    gs.forEach((r) => {
-      const eId = String(r.Exam_ID || r.Exam_Name || "").trim();
-      if (eId) set.add(eId);
-    });
     const list = Array.from(set).sort();
-    return list.length > 0 ? list : ["EXAM_MID_TERM_2026", "EXAM_ANNUAL_2026", "FIRST_TERM_2026"];
+    return list;
+  }, [db]);
+
+  const academicSessions = useMemo(() => {
+    const sessions = new Set((db.exam_scheme || []).map(getAcademicSession).filter(Boolean));
+    return Array.from(sessions).sort().reverse();
   }, [db]);
 
   // Available grades
@@ -63,13 +67,21 @@ export default function CadetResultCards({ db = {} }) {
 
   const [selectedGrade, setSelectedGrade] = useState(availableGrades[0] || "9");
   const [selectedSection, setSelectedSection] = useState("A");
-  const [selectedExam, setSelectedExam] = useState(examOptions[0] || "");
+  const [selectedExam, setSelectedExam] = useState("All Exams");
+  const [selectedSession, setSelectedSession] = useState(academicSessions[0] || "");
   const [selectedKitNo, setSelectedKitNo] = useState("");
   const [viewMode, setViewMode] = useState("single"); // "single" | "batch"
   const [copied, setCopied] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const [sharingWhatsApp, setSharingWhatsApp] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
+  const [savingPublication, setSavingPublication] = useState(false);
+
+  useEffect(() => {
+    if (academicSessions.length > 0 && !academicSessions.includes(selectedSession)) {
+      setSelectedSession(academicSessions[0]);
+    }
+  }, [academicSessions, selectedSession]);
 
   // Search by Kit No or Name state
   const [searchQuery, setSearchQuery] = useState("");
@@ -139,10 +151,10 @@ export default function CadetResultCards({ db = {} }) {
 
   // Compute class analytics and merit list
   const analytics = useMemo(() => {
-    return buildClassAnalyticsData(db, selectedGrade, selectedSection, selectedExam);
-  }, [db, selectedGrade, selectedSection, selectedExam]);
+    return buildClassAnalyticsData(db, selectedGrade, selectedSection, selectedExam, selectedSession);
+  }, [db, selectedGrade, selectedSection, selectedExam, selectedSession]);
 
-  const { meritGrid, subjects, subjectAverages, empty } = analytics;
+  const { meritGrid, subjects, assessmentColumns, subjectAverages, empty } = analytics;
 
   // Sync selectedKitNo when meritGrid changes
   useEffect(() => {
@@ -191,6 +203,7 @@ export default function CadetResultCards({ db = {} }) {
         section: selectedSection,
         exam: selectedExam,
         subjects,
+        assessmentColumns,
         totalCadets: meritGrid.length,
       });
     } catch (err) {
@@ -212,6 +225,7 @@ export default function CadetResultCards({ db = {} }) {
         section: selectedSection,
         exam: selectedExam,
         subjects,
+        assessmentColumns,
       });
     } catch (err) {
       console.error("Batch PDF generation failed:", err);
@@ -245,6 +259,7 @@ export default function CadetResultCards({ db = {} }) {
         section: selectedSection,
         exam: selectedExam,
         subjects,
+        assessmentColumns,
         totalCadets: meritGrid.length,
       });
 
@@ -281,6 +296,7 @@ export default function CadetResultCards({ db = {} }) {
           section: selectedSection,
           exam: selectedExam,
           subjects,
+          assessmentColumns,
           totalCadets: meritGrid.length,
         });
 
@@ -307,15 +323,27 @@ export default function CadetResultCards({ db = {} }) {
   // Export Single Result Card to Excel (filtered to cadet's academic group)
   const exportSingleExcel = () => {
     if (!currentCadet) return;
-    const cadetSubjects = filterSubjectsForCadet(subjects, currentCadet, selectedGrade);
-    const rows = cadetSubjects.map((subj) => {
-      const scoreObj = currentCadet.scores?.[subj];
+    const rows = buildResultRows(currentCadet, assessmentColumns).map((row) => {
       return {
-        Subject: subj,
-        "Max Marks": scoreObj?.maxMarks || 100,
-        "Marks Obtained": scoreObj ? (scoreObj.isAbsent ? "AB" : scoreObj.obtained) : "-",
-        Percentage: scoreObj && !scoreObj.isAbsent ? `${Math.round(scoreObj.pct)}%` : "-",
+        Exam: row.examName,
+        Subject: row.subject,
+        "Max Marks": row.maximum,
+        "Marks Obtained": row.obtained,
+        Percentage: row.percentage,
+        Grade: row.grade,
+        Status: row.state,
       };
+    });
+    const summary = buildResultSummary(currentCadet);
+    rows.push({
+      Exam: "OVERALL",
+      Subject: "Grand Total / Aggregate",
+      "Max Marks": currentCadet.totalMaxMarks ?? "-",
+      "Marks Obtained": currentCadet.totalObtained ?? "-",
+      Percentage: summary.percentage,
+      Grade: summary.grade,
+      Status: summary.status,
+      "Publication Status": currentCadet.publicationStatus || "Untracked",
     });
 
     const worksheet = XLSX.utils.json_to_sheet(rows);
@@ -326,6 +354,40 @@ export default function CadetResultCards({ db = {} }) {
       workbook,
       `PSCC_Result_Card_${currentCadet.Kit_No}_${safeName}.xlsx`
     );
+  };
+
+  const recordPublication = async (status) => {
+    if (!currentCadet || !canPublishResults) return;
+    let revisionReason = "";
+    if (status === "Revised") {
+      revisionReason = window.prompt("Reason for revising this published result:")?.trim() || "";
+      if (!revisionReason) return;
+    }
+    try {
+      setSavingPublication(true);
+      const response = await fetch("/api/result-publications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          grade: selectedGrade,
+          section: selectedSection,
+          kitNo: currentCadet.Kit_No,
+          academicSession: selectedSession,
+          examId: selectedExam,
+          status,
+          revisionReason,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.success) throw new Error(payload.error || "Publication could not be recorded.");
+      setToastMessage({ type: "success", message: `Result status recorded as ${status}.` });
+      await onPublicationSaved?.();
+    } catch (error) {
+      setToastMessage({ type: "error", message: error.message || "Publication could not be recorded." });
+    } finally {
+      setSavingPublication(false);
+      setTimeout(() => setToastMessage(null), 6000);
+    }
   };
 
   return (
@@ -397,7 +459,7 @@ export default function CadetResultCards({ db = {} }) {
         </div>
 
         {/* 4-Column Controls: Grade, Section, Exam Name, Search Cadet by Kit No */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
           <div className="space-y-1">
             <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
               Grade / Class
@@ -410,6 +472,20 @@ export default function CadetResultCards({ db = {} }) {
               {availableGrades.map((g, idx) => (
                 <option key={idx} value={g}>Grade {g}</option>
               ))}
+            </select>
+          </div>
+
+          <div className="space-y-1">
+            <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+              Academic Session / Year
+            </label>
+            <select
+              value={selectedSession}
+              onChange={(e) => setSelectedSession(e.target.value)}
+              className="w-full min-h-[44px] px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-600"
+            >
+              {academicSessions.length === 0 && <option value="">Not configured</option>}
+              {academicSessions.map((session) => <option key={session} value={session}>{session}</option>)}
             </select>
           </div>
 
@@ -596,6 +672,33 @@ export default function CadetResultCards({ db = {} }) {
           <div className="flex items-center space-x-2 w-full sm:w-auto justify-end flex-wrap gap-2">
             {viewMode === "single" ? (
               <>
+                {canPublishResults && !currentCadet?.hasPriorOfficialPublication && (
+                  <button
+                    onClick={() => recordPublication("Draft")}
+                    disabled={savingPublication || !currentCadet}
+                    className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-xl text-xs font-semibold disabled:opacity-50"
+                  >
+                    Save Draft
+                  </button>
+                )}
+                {canPublishResults && !currentCadet?.hasPriorOfficialPublication && currentCadet?.isFinal && (
+                  <button
+                    onClick={() => recordPublication("Published")}
+                    disabled={savingPublication}
+                    className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold disabled:opacity-50"
+                  >
+                    Publish Result
+                  </button>
+                )}
+                {canPublishResults && currentCadet?.publicationStatus === "UNPUBLISHED_CHANGES" && currentCadet?.isFinal && (
+                  <button
+                    onClick={() => recordPublication("Revised")}
+                    disabled={savingPublication}
+                    className="px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold disabled:opacity-50"
+                  >
+                    Publish Revision
+                  </button>
+                )}
                 {/* 1. Download as PDF Button */}
                 <button
                   onClick={handleDownloadSinglePDF}
@@ -688,6 +791,7 @@ export default function CadetResultCards({ db = {} }) {
                   section={selectedSection}
                   exam={selectedExam}
                   subjects={subjects}
+                  assessmentColumns={assessmentColumns}
                   totalCadets={meritGrid.length}
                 />
               </div>
@@ -701,6 +805,7 @@ export default function CadetResultCards({ db = {} }) {
                 section={selectedSection}
                 exam={selectedExam}
                 subjects={subjects}
+                assessmentColumns={assessmentColumns}
                 totalCadets={meritGrid.length}
               />
             )
@@ -721,12 +826,15 @@ function SingleCardView({
   section,
   exam,
   subjects,
+  assessmentColumns,
   totalCadets,
 }) {
   if (!cadet) return null;
 
-  const isPass = cadet.isPassed !== false && String(cadet.passStatus || "").toUpperCase() === "PASS";
-  const cadetSubjects = filterSubjectsForCadet(subjects, cadet, grade);
+  const isPass = String(cadet.passStatus || "").toUpperCase() === "PASS";
+  const cadetAssessments = assessmentColumns
+    .map((column) => ({ column, scoreObj: getAssessment(cadet, column) }))
+    .filter(({ scoreObj }) => scoreObj);
 
   return (
     <div className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl p-6 sm:p-8 max-w-4xl mx-auto space-y-6 print:border-none print:shadow-none print:p-0 print:m-0 print:text-black">
@@ -783,8 +891,8 @@ function SingleCardView({
         <div className="p-3 rounded-xl bg-slate-100 dark:bg-slate-800 print:bg-gray-100 border border-slate-200 dark:border-slate-700 print:border-gray-300">
           <span className="text-[10px] uppercase font-bold text-slate-500 print:text-gray-600">Grand Total</span>
           <p className="text-base sm:text-lg font-black text-slate-900 dark:text-white print:text-black tabular-nums">
-            {cadet.totalObtained}
-            <span className="text-xs font-normal text-slate-400">/{cadet.totalMaxMarks}</span>
+            {cadet.isFinal ? cadet.totalObtained : "-"}
+            {cadet.isFinal && <span className="text-xs font-normal text-slate-400">/{cadet.totalMaxMarks}</span>}
           </p>
         </div>
 
@@ -792,7 +900,7 @@ function SingleCardView({
         <div className="p-3 rounded-xl bg-blue-50 dark:bg-blue-950/40 print:bg-blue-50 border border-blue-200 dark:border-blue-900 print:border-blue-200">
           <span className="text-[10px] uppercase font-bold text-blue-700 print:text-blue-800">Aggregate %</span>
           <p className="text-base sm:text-lg font-black text-blue-700 print:text-blue-900 tabular-nums">
-            {cadet.aggregatePct}%
+            {cadet.isFinal ? `${cadet.aggregatePct}%` : "-"}
           </p>
         </div>
 
@@ -800,7 +908,7 @@ function SingleCardView({
         <div className="p-3 rounded-xl bg-slate-100 dark:bg-slate-800 print:bg-gray-100 border border-slate-200 dark:border-slate-700 print:border-gray-300">
           <span className="text-[10px] uppercase font-bold text-slate-500 print:text-gray-600">Grade</span>
           <p className="text-base sm:text-lg font-black text-slate-900 dark:text-white print:text-black">
-            {cadet.letterGrade}
+            {cadet.letterGrade || "-"}
           </p>
         </div>
 
@@ -826,12 +934,28 @@ function SingleCardView({
         </div>
       </div>
 
+      {cadet.publicationStatus && (
+        <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs font-bold text-blue-800 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300">
+          Publication: {cadet.publicationStatus === "UNPUBLISHED_CHANGES" ? "Published result has unapproved calculation changes" : cadet.publicationStatus}
+        </div>
+      )}
+
+      {!cadet.isFinal && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+          <p className="font-extrabold">This is not a completed final result: {cadet.resultStatus}.</p>
+          {cadet.errors?.slice(0, 4).map((error, index) => (
+            <p key={`${error.code}-${index}`} className="mt-1">{error.examId ? `${error.examId} / ` : ""}{error.subject ? `${error.subject}: ` : ""}{error.message}</p>
+          ))}
+        </div>
+      )}
+
       {/* Subject-Wise Detailed Score Breakdown Table */}
       <div className="border border-slate-200 dark:border-slate-700 print:border-gray-400 rounded-xl overflow-hidden shadow-sm">
         <table className="w-full text-left text-xs">
           <thead>
             <tr className="bg-slate-100 dark:bg-slate-800 print:bg-gray-200 border-b border-slate-200 dark:border-slate-700 print:border-gray-400 font-bold text-slate-700 dark:text-slate-300 print:text-black uppercase">
               <th className="py-2.5 px-4 w-12 text-center">#</th>
+              <th className="py-2.5 px-4">Exam</th>
               <th className="py-2.5 px-4">Subject Name</th>
               <th className="py-2.5 px-4 text-center w-24">Max Marks</th>
               <th className="py-2.5 px-4 text-center w-28">Obtained</th>
@@ -841,30 +965,22 @@ function SingleCardView({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800 print:divide-gray-300 font-medium">
-            {cadetSubjects.map((subj, i) => {
-              const scoreObj = cadet.scores?.[subj];
-              const isAbsent = scoreObj?.isAbsent;
-              const hasScore = scoreObj && !isAbsent;
+            {cadetAssessments.map(({ column, scoreObj }, i) => {
+              const presentation = formatAssessment(scoreObj);
+              const isAbsent = presentation.state === "ABSENT";
+              const hasScore = presentation.state === "PRESENT";
               const pct = hasScore ? Math.round(scoreObj.pct * 10) / 10 : 0;
-              const isFail = hasScore && pct < 40;
-
-              let subRemarks = "Satisfactory";
-              let subGrade = "U";
-              if (pct >= 90) { subRemarks = "Outstanding"; subGrade = "A+"; }
-              else if (pct >= 80) { subRemarks = "Very Good"; subGrade = "A"; }
-              else if (pct >= 70) { subRemarks = "Good"; subGrade = "B"; }
-              else if (pct >= 60) { subRemarks = "Above Average"; subGrade = "C"; }
-              else if (pct >= 50) { subRemarks = "Average"; subGrade = "D"; }
-              else if (pct >= 40) { subRemarks = "Below Average"; subGrade = "E"; }
-              else if (isAbsent) { subRemarks = "Absent from Exam"; subGrade = "AB"; }
-              else { subRemarks = "Academic Support"; subGrade = "U"; }
+              const isFail = presentation.isFail;
+              const subRemarks = presentation.remarks;
+              const subGrade = presentation.grade;
 
               return (
-                <tr key={subj} className={isAbsent ? "bg-slate-50/50 dark:bg-slate-800/30 print:bg-gray-100" : ""}>
+                <tr key={column.key} className={isAbsent ? "bg-slate-50/50 dark:bg-slate-800/30 print:bg-gray-100" : ""}>
                   <td className="py-2.5 px-4 text-center text-slate-400 font-mono">{i + 1}</td>
-                  <td className="py-2.5 px-4 font-bold text-slate-900 dark:text-white print:text-black">{subj}</td>
+                  <td className="py-2.5 px-4 font-semibold text-slate-600 dark:text-slate-300 print:text-black">{column.examName}</td>
+                  <td className="py-2.5 px-4 font-bold text-slate-900 dark:text-white print:text-black">{column.subject}</td>
                   <td className="py-2.5 px-4 text-center text-slate-500 print:text-black tabular-nums">
-                    {scoreObj?.maxMarks || 100}
+                    {presentation.maximum}
                   </td>
                   <td className="py-2.5 px-4 text-center font-bold tabular-nums">
                     {isAbsent ? (
@@ -873,10 +989,10 @@ function SingleCardView({
                       </span>
                     ) : hasScore ? (
                       <span className={isFail ? "text-rose-600 font-bold" : "text-slate-900 dark:text-white print:text-black"}>
-                        {scoreObj.obtained}
+                        {presentation.obtained}
                       </span>
                     ) : (
-                      "-"
+                      presentation.obtained
                     )}
                   </td>
                   <td className="py-2.5 px-4 text-center font-bold text-blue-700 dark:text-blue-400 print:text-black tabular-nums">
@@ -899,20 +1015,21 @@ function SingleCardView({
             {/* Grand Total Summary Row */}
             <tr className="bg-slate-100/80 dark:bg-slate-800/80 font-bold border-t-2 border-slate-300 dark:border-slate-700 print:border-black text-slate-900 dark:text-white print:text-black">
               <td className="py-3 px-4 text-center"></td>
+              <td className="py-3 px-4 text-center"></td>
               <td className="py-3 px-4 text-blue-700 dark:text-blue-400 print:text-black uppercase">
                 Grand Total / Aggregate
               </td>
               <td className="py-3 px-4 text-center tabular-nums">
-                {cadet.totalMaxMarks}
+                {cadet.totalMaxMarks ?? "-"}
               </td>
               <td className="py-3 px-4 text-center tabular-nums">
-                {cadet.totalObtained}
+                {cadet.totalObtained ?? "-"}
               </td>
               <td className="py-3 px-4 text-center text-blue-700 dark:text-blue-400 print:text-black tabular-nums">
-                {cadet.aggregatePct}%
+                {cadet.aggregatePct === null ? "-" : `${cadet.aggregatePct}%`}
               </td>
               <td className="py-3 px-4 text-center text-emerald-700 dark:text-emerald-400 print:text-black">
-                {cadet.letterGrade}
+                {cadet.letterGrade || "-"}
               </td>
               <td className="py-3 px-4 text-[11px]">
                 {isPass ? "Passed Examination" : "Academic Support Needed"}

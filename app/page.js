@@ -186,7 +186,7 @@ export default function Home() {
           ) : activeTab === "marks" ? (
             <MarksEntryPortal db={db} onMarksSaved={() => fetchDatabase(true)} />
           ) : activeTab === "reports" ? (
-            <CadetResultCards db={db} />
+            <CadetResultCards db={db} onPublicationSaved={() => fetchDatabase(true)} />
           ) : activeTab === "papers" ? (
             <QuestionPaperPortal db={db} onSubmissionComplete={() => fetchDatabase(true)} />
           ) : null}

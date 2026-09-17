@@ -450,6 +450,13 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
       setToast({ type: "info", message: "Marks cannot be changed while previewing another staff member." });
       return;
     }
+    if (!Number.isFinite(maxMarks) || maxMarks <= 0) {
+      setToast({
+        type: "error",
+        message: "Marks entry is blocked because exactly one valid exam_scheme maximum is required.",
+      });
+      return;
+    }
     const records = enrolledStudents
       .filter((std) => !isDuplicateKitNo(std.Kit_No || std.Student_ID))
       .map((std) => {
@@ -662,7 +669,7 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
           {/* Subject */}
           <div className="space-y-1">
             <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-              Subject (Max: {maxMarks})
+              Subject (Max: {maxMarks ?? "Configuration required"})
             </label>
             <select
               value={selectedSubject}
@@ -769,7 +776,7 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
         </div>
 
         <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-2 self-end sm:self-auto">
-          <span>Max Marks: <strong>{maxMarks}</strong></span>
+          <span>Max Marks: <strong>{maxMarks ?? "Configuration required"}</strong></span>
           <span>•</span>
           <span>Subject: <strong>{selectedSubject}</strong></span>
         </div>
@@ -861,7 +868,7 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
                   <th className="py-3 px-2 sm:px-4 w-20 sm:w-24">Kit No</th>
                   <th className="py-3 px-2 sm:px-4 min-w-[130px] sm:min-w-[160px]">Cadet Name</th>
                   <th className="py-3 px-2 sm:px-4 hidden sm:table-cell w-24 sm:w-28">Group</th>
-                  <th className="py-3 px-2 sm:px-4 w-28 sm:w-36 text-center">Score / {maxMarks}</th>
+                  <th className="py-3 px-2 sm:px-4 w-28 sm:w-36 text-center">Score / {maxMarks ?? "-"}</th>
                   <th className="py-3 px-2 sm:px-4 w-24 sm:w-28 text-center">Status</th>
                   <th className="py-3 px-2 sm:px-4 w-20 sm:w-24 text-center">Grade</th>
                 </tr>
