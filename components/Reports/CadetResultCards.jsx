@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import * as XLSX from "xlsx";
 import {
   Printer,
   Download,
@@ -24,9 +23,10 @@ import {
 } from "lucide-react";
 import { buildClassAnalyticsData } from "@/lib/analytics";
 import { PSCC_LOGO_DATA_URI } from "@/lib/logo";
-import { getAcademicSession, getAssessment } from "@/lib/examinationResults.mjs";
+import { ALL_EXAMS, getAcademicSession, getAssessment } from "@/lib/examinationResults.mjs";
 import { useAuthStore } from "@/lib/store";
-import { buildResultRows, buildResultSummary, formatAssessment } from "@/lib/resultPresentation.mjs";
+import { buildIndividualAllExamsModel, formatAssessment } from "@/lib/resultPresentation.mjs";
+import { downloadIndividualResultWorkbook } from "@/lib/excelResultGenerator.mjs";
 import {
   downloadCadetResultCardPDF,
   downloadBatchResultCardsPDF,
@@ -154,7 +154,7 @@ export default function CadetResultCards({ db = {}, onPublicationSaved }) {
     return buildClassAnalyticsData(db, selectedGrade, selectedSection, selectedExam, selectedSession);
   }, [db, selectedGrade, selectedSection, selectedExam, selectedSession]);
 
-  const { meritGrid, subjects, assessmentColumns, subjectAverages, empty } = analytics;
+  const { meritGrid, subjects, assessmentColumns, examColumns, subjectColumns, subjectAverages, empty } = analytics;
 
   // Sync selectedKitNo when meritGrid changes
   useEffect(() => {
@@ -204,6 +204,8 @@ export default function CadetResultCards({ db = {}, onPublicationSaved }) {
         exam: selectedExam,
         subjects,
         assessmentColumns,
+        examColumns,
+        subjectColumns,
         totalCadets: meritGrid.length,
       });
     } catch (err) {
@@ -226,6 +228,8 @@ export default function CadetResultCards({ db = {}, onPublicationSaved }) {
         exam: selectedExam,
         subjects,
         assessmentColumns,
+        examColumns,
+        subjectColumns,
       });
     } catch (err) {
       console.error("Batch PDF generation failed:", err);
@@ -260,6 +264,8 @@ export default function CadetResultCards({ db = {}, onPublicationSaved }) {
         exam: selectedExam,
         subjects,
         assessmentColumns,
+        examColumns,
+        subjectColumns,
         totalCadets: meritGrid.length,
       });
 
@@ -297,6 +303,8 @@ export default function CadetResultCards({ db = {}, onPublicationSaved }) {
           exam: selectedExam,
           subjects,
           assessmentColumns,
+          examColumns,
+          subjectColumns,
           totalCadets: meritGrid.length,
         });
 
@@ -321,39 +329,20 @@ export default function CadetResultCards({ db = {}, onPublicationSaved }) {
   };
 
   // Export Single Result Card to Excel (filtered to cadet's academic group)
-  const exportSingleExcel = () => {
+  const exportSingleExcel = async () => {
     if (!currentCadet) return;
-    const rows = buildResultRows(currentCadet, assessmentColumns).map((row) => {
-      return {
-        Exam: row.examName,
-        Subject: row.subject,
-        "Max Marks": row.maximum,
-        "Marks Obtained": row.obtained,
-        Percentage: row.percentage,
-        Grade: row.grade,
-        Status: row.state,
-      };
-    });
-    const summary = buildResultSummary(currentCadet);
-    rows.push({
-      Exam: "OVERALL",
-      Subject: "Grand Total / Aggregate",
-      "Max Marks": currentCadet.totalMaxMarks ?? "-",
-      "Marks Obtained": currentCadet.totalObtained ?? "-",
-      Percentage: summary.percentage,
-      Grade: summary.grade,
-      Status: summary.status,
-      "Publication Status": currentCadet.publicationStatus || "Untracked",
-    });
-
-    const worksheet = XLSX.utils.json_to_sheet(rows);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Result_Card");
-    const safeName = String(currentCadet.Name || "").replace(/[^a-zA-Z0-9]/g, "_");
-    XLSX.writeFile(
-      workbook,
-      `PSCC_Result_Card_${currentCadet.Kit_No}_${safeName}.xlsx`
-    );
+    try {
+      await downloadIndividualResultWorkbook({
+        cadet: currentCadet,
+        selectedExam,
+        assessmentColumns,
+        examColumns,
+        subjectColumns,
+      });
+    } catch (error) {
+      console.error("Excel export failed:", error);
+      alert("Failed to generate the Excel result card. Please try again.");
+    }
   };
 
   const recordPublication = async (status) => {
@@ -792,6 +781,8 @@ export default function CadetResultCards({ db = {}, onPublicationSaved }) {
                   exam={selectedExam}
                   subjects={subjects}
                   assessmentColumns={assessmentColumns}
+                  examColumns={examColumns}
+                  subjectColumns={subjectColumns}
                   totalCadets={meritGrid.length}
                 />
               </div>
@@ -806,6 +797,8 @@ export default function CadetResultCards({ db = {}, onPublicationSaved }) {
                 exam={selectedExam}
                 subjects={subjects}
                 assessmentColumns={assessmentColumns}
+                examColumns={examColumns}
+                subjectColumns={subjectColumns}
                 totalCadets={meritGrid.length}
               />
             )
@@ -827,6 +820,8 @@ function SingleCardView({
   exam,
   subjects,
   assessmentColumns,
+  examColumns,
+  subjectColumns,
   totalCadets,
 }) {
   if (!cadet) return null;
@@ -835,6 +830,9 @@ function SingleCardView({
   const cadetAssessments = assessmentColumns
     .map((column) => ({ column, scoreObj: getAssessment(cadet, column) }))
     .filter(({ scoreObj }) => scoreObj);
+  const allExamsModel = exam === ALL_EXAMS
+    ? buildIndividualAllExamsModel(cadet, examColumns, subjectColumns)
+    : null;
 
   return (
     <div className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl p-6 sm:p-8 max-w-4xl mx-auto space-y-6 print:border-none print:shadow-none print:p-0 print:m-0 print:text-black">
@@ -950,6 +948,53 @@ function SingleCardView({
       )}
 
       {/* Subject-Wise Detailed Score Breakdown Table */}
+      {allExamsModel ? (
+        <div className="border border-slate-200 dark:border-slate-700 print:border-gray-400 rounded-xl overflow-x-auto shadow-sm">
+          <table className="w-full min-w-max text-left text-xs">
+            <thead>
+              <tr className="bg-slate-100 dark:bg-slate-800 print:bg-gray-200 border-b border-slate-200 dark:border-slate-700 print:border-gray-400 font-bold text-slate-700 dark:text-slate-300 print:text-black uppercase">
+                <th className="py-2.5 px-4 min-w-[150px]">Subject</th>
+                {allExamsModel.examColumns.map((column) => (
+                  <th key={column.key} className="py-2.5 px-4 text-center min-w-[130px]">{column.label}</th>
+                ))}
+                <th className="py-2.5 px-4 text-center min-w-[110px]">Grand Total</th>
+                <th className="py-2.5 px-4 text-center min-w-[90px]">Overall %</th>
+                <th className="py-2.5 px-4 text-center min-w-[110px]">Overall Grade</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 print:divide-gray-300 font-medium">
+              {allExamsModel.rows.map((row) => (
+                <tr key={row.key}>
+                  <td className="py-2.5 px-4 font-bold text-slate-900 dark:text-white print:text-black">{row.subject}</td>
+                  {row.examCells.map((cell) => (
+                    <td key={cell.examId} className={`py-2.5 px-4 text-center font-bold tabular-nums ${
+                      ["MISSING", "INVALID", "DUPLICATE_CONFLICT", "CONFIGURATION_ERROR"].includes(cell.state)
+                        ? "text-rose-600 dark:text-rose-400"
+                        : cell.state === "ABSENT"
+                        ? "text-amber-700 dark:text-amber-400"
+                        : "text-slate-900 dark:text-white print:text-black"
+                    }`}>
+                      {cell.display}
+                    </td>
+                  ))}
+                  <td className="py-2.5 px-4 text-center font-extrabold tabular-nums">{row.subjectTotal.display}</td>
+                  <td className="py-2.5 px-4 text-center"></td>
+                  <td className="py-2.5 px-4 text-center"></td>
+                </tr>
+              ))}
+              <tr className="bg-slate-100/80 dark:bg-slate-800/80 font-bold border-t-2 border-slate-300 dark:border-slate-700 print:border-black text-slate-900 dark:text-white print:text-black">
+                <td className="py-3 px-4 text-blue-700 dark:text-blue-400 print:text-black uppercase">{allExamsModel.aggregateRow.subject}</td>
+                {allExamsModel.aggregateRow.examCells.map((cell) => (
+                  <td key={cell.examId} className="py-3 px-4 text-center tabular-nums">{cell.display}</td>
+                ))}
+                <td className="py-3 px-4 text-center tabular-nums">{allExamsModel.aggregateRow.grandTotal}</td>
+                <td className="py-3 px-4 text-center text-blue-700 dark:text-blue-400 print:text-black tabular-nums">{allExamsModel.aggregateRow.overallPercentage}</td>
+                <td className="py-3 px-4 text-center text-emerald-700 dark:text-emerald-400 print:text-black">{allExamsModel.aggregateRow.overallGrade}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      ) : (
       <div className="border border-slate-200 dark:border-slate-700 print:border-gray-400 rounded-xl overflow-hidden shadow-sm">
         <table className="w-full text-left text-xs">
           <thead>
@@ -1038,6 +1083,7 @@ function SingleCardView({
           </tbody>
         </table>
       </div>
+      )}
 
       {/* Formal 3-Tier Signature Block */}
       <div className="pt-8 grid grid-cols-3 gap-4 text-center text-xs text-slate-700 dark:text-slate-300 print:text-black">

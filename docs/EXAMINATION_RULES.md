@@ -201,6 +201,17 @@ An exam is included only when it has a valid corresponding entry in the `exam_sc
 
 Exams from different academic sessions/years must never be combined. Academic Session/Year must come from explicit academic configuration and must not be inferred from an exam name, exam identifier, marks date, or row order.
 
+### Exam Ordering
+
+All Exams columns must be ordered by the integer `Exam_Order` configured in `exam_scheme`.
+
+- Every row belonging to the same exam must have the same `Exam_Order`.
+- `Exam_Order` is scoped within the same Grade/Class and Academic Session/Year.
+- Included exams are sorted by `Exam_Order` ascending.
+- Exam ID and sheet row position must not be used as ordering fallbacks.
+- A missing, non-integer, inconsistent, or duplicate `Exam_Order` is a configuration error.
+- If two included exams use the same `Exam_Order`, the combined result must not be finalized.
+
 ### Display Requirements
 
 For each subject, display the marks for each exam separately.
@@ -212,12 +223,25 @@ Example:
 | English | 40/50 | 72/100 | 80/100 |
 | Mathematics | 45/50 | 75/100 | 85/100 |
 
+If a subject is not configured or is not applicable for a particular included exam, display `N/A`; this is not missing data. If the subject is configured and applicable but the required mark is absent, display `MISSING` and keep the result incomplete.
+
 The All Exams view must also display:
 
 - Grand Total Obtained
 - Grand Maximum Marks
 - Overall Percentage
 - Overall Grade
+
+The authoritative All Exams result model must expose shared exam totals, subject totals, exam columns, and subject columns. Analytics, result cards, Excel exports, and PDF exports must consume the shared presentation models and must not independently recalculate marks.
+
+The combined/class All Exams result must end with separate columns for:
+
+- Grand Total
+- Overall %
+- Combined Grade
+- Result Status
+
+Status values must not be placed in the grade field. Incomplete, invalid, and configuration-error results have no final grade or rank.
 
 ### Grand Total Calculation
 
@@ -529,7 +553,11 @@ At minimum, Task 1.5 should test:
 - Only exams from the selected Grade/Class and Academic Session/Year are included
 - Exams from different academic sessions/years are never combined
 - Every included exam has a valid corresponding `exam_scheme` entry
+- Exam columns follow integer `Exam_Order` ascending
+- Missing, non-integer, inconsistent, and duplicate `Exam_Order` values produce configuration errors
 - Separate exam subject values remain visible
+- Unconfigured or inapplicable exam-subject cells display `N/A`
+- Subject totals aggregate all configured included exams
 - Correct Grand Obtained
 - Correct Grand Maximum
 - Correct combined percentage
@@ -582,6 +610,9 @@ Key rules:
 - One college-wide grading scale is used everywhere.
 - Conduct counts in totals and percentage.
 - All Exams includes only valid exams for the same Grade/Class and Academic Session/Year, shows each exam separately, and reports Grand Obtained, Grand Maximum, Overall %, and Grade.
+- All Exams columns are ordered only by valid integer `Exam_Order`; ordering errors block finalization.
+- Individual and combined All Exams views use shared exam totals, subject totals, exam columns, and subject columns through one presentation model.
+- Combined Grade and Result Status remain separate fields.
 - Complete failed results remain rankable.
 - Historical results are labelled `Revised Result` only after explicit, approved publication tracking proves that a previously published result was revised; no label is inferred under the current schema.
 - Teachers may view overall analytics for their assigned class/section but may edit marks only for their assigned subjects.

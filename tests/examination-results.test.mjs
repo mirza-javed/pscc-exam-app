@@ -6,14 +6,21 @@ import {
   getAssessment,
   resolveClassResults,
 } from "../lib/examinationResults.mjs";
-import { buildResultRows, buildResultSummary, formatAssessment } from "../lib/resultPresentation.mjs";
+import {
+  buildCombinedAllExamsModel,
+  buildIndividualAllExamsModel,
+  buildResultRows,
+  buildResultSummary,
+  formatAssessment,
+} from "../lib/resultPresentation.mjs";
 import { calculateGradeInfo } from "../lib/grading.js";
 
-function scheme(examId, subject, maximum = "100", session = "2026-27") {
+function scheme(examId, subject, maximum = "100", session = "2026-27", examOrder = examId === "E1" ? 1 : 2) {
   return {
     Exam_ID: examId,
     Exam_Name: examId === "E1" ? "Monthly" : "Final",
     Academic_Session: session,
+    Exam_Order: examOrder,
     Grade: "9",
     Subject: subject,
     Max_Marks: maximum,
@@ -139,6 +146,54 @@ test("All Exams includes only the selected grade and session and preserves exam 
   assert.equal(cadet.totalMaxMarks, 300);
   assert.equal(cadet.aggregatePct, 85);
   assert.equal(cadet.letterGrade, "A");
+  assert.deepEqual(resolved.examColumns.map((exam) => exam.examOrder), [1, 2]);
+  assert.equal(cadet.examTotals.E1.obtained, 85);
+  assert.equal(cadet.examTotals.E1.maxMarks, 100);
+  assert.equal(cadet.subjectTotals.English.obtained, 120);
+  assert.equal(cadet.subjectTotals.English.maxMarks, 150);
+});
+
+test("All Exams sorts only by Exam_Order and rejects missing, inconsistent, or duplicate order", () => {
+  const ordered = database({
+    exam_scheme: [
+      scheme("E1", "English", "50", "2026-27", 20),
+      scheme("E2", "English", "100", "2026-27", 10),
+    ],
+    Marks_Log: [mark("100", "E1", "English", "40"), mark("100", "E2", "English", "80")],
+  });
+  assert.deepEqual(resolveClassResults(ordered, "9", "A", ALL_EXAMS, "2026-27").exams.map((exam) => exam.examId), ["E2", "E1"]);
+
+  const invalidSchemes = [
+    [scheme("E1", "English", "50", "2026-27", ""), scheme("E2", "English", "100", "2026-27", 2)],
+    [scheme("E1", "English", "50", "2026-27", 1), scheme("E1", "Physics", "50", "2026-27", 2), scheme("E2", "English", "100", "2026-27", 3)],
+    [scheme("E1", "English", "50", "2026-27", 1), scheme("E2", "English", "100", "2026-27", 1)],
+  ];
+  for (const exam_scheme of invalidSchemes) {
+    const resolved = resolveClassResults(database({ exam_scheme }), "9", "A", ALL_EXAMS, "2026-27");
+    assert.equal(resolved.results[0].resultStatus, "CONFIGURATION_ERROR");
+    assert.equal(resolved.exams.length, 0);
+  }
+});
+
+test("All Exams subject totals skip unconfigured exam subjects without treating them as missing", () => {
+  const db = database({
+    exam_scheme: [
+      scheme("E1", "English", "50", "2026-27", 1),
+      scheme("E1", "Physics", "50", "2026-27", 1),
+      scheme("E2", "English", "100", "2026-27", 2),
+    ],
+    Marks_Log: [
+      mark("100", "E1", "English", "40"),
+      mark("100", "E1", "Physics", "45"),
+      mark("100", "E2", "English", "80"),
+    ],
+  });
+  const cadet = result(db, ALL_EXAMS);
+  assert.equal(cadet.resultStatus, "PASS");
+  assert.equal(cadet.assessments.E2.Physics, undefined);
+  assert.equal(cadet.subjectTotals.Physics.state, "COMPLETE");
+  assert.equal(cadet.subjectTotals.Physics.obtained, 45);
+  assert.equal(cadet.subjectTotals.Physics.maxMarks, 50);
 });
 
 test("All Exams becomes incomplete when any included assessment is missing", () => {
@@ -227,4 +282,64 @@ test("screen, PDF, and Excel adapters share the same resolved presentation value
     rank: "#1",
     status: "PASS",
   });
+});
+
+test("All Exams presentation models pivot exams for individuals and subjects for classes", () => {
+  const db = database({
+    exam_scheme: [
+      scheme("E1", "English", "50", "2026-27", 1),
+      scheme("E1", "Physics", "50", "2026-27", 1),
+      scheme("E2", "English", "100", "2026-27", 2),
+    ],
+    Marks_Log: [
+      mark("100", "E1", "English", "40"), mark("100", "E1", "Physics", "AB"), mark("100", "E2", "English", "80"),
+      mark("101", "E1", "English", "30"), mark("101", "E1", "Physics", "20"), mark("101", "E2", "English", "60"),
+    ],
+  });
+  const resolved = resolveClassResults(db, "9", "A", ALL_EXAMS, "2026-27");
+  const cadet = resolved.results.find((row) => row.Kit_No === "100");
+  const individual = buildIndividualAllExamsModel(cadet, resolved.examColumns, resolved.subjectColumns);
+  assert.deepEqual(individual.examColumns.map((column) => column.label), ["Monthly", "Final"]);
+  assert.deepEqual(individual.rows.find((row) => row.subject === "Physics").examCells.map((cell) => cell.display), ["AB/50", "N/A"]);
+  assert.equal(individual.rows.find((row) => row.subject === "English").subjectTotal.display, "120/150");
+  assert.equal(individual.aggregateRow.grandTotal, "120/200");
+
+  const combined = buildCombinedAllExamsModel(resolved.results, resolved.subjectColumns);
+  const row = combined.rows.find((item) => item.kitNo === "100");
+  assert.deepEqual(row.subjectCells.map((cell) => cell.display), ["120/150", "0/50"]);
+  assert.equal(row.combinedGrade, "C");
+  assert.equal(row.resultStatus, "FAIL");
+});
+
+test("combined presentation keeps non-final status out of grade and rank fields", () => {
+  const incompleteDb = database({
+    exam_scheme: [scheme("E1", "English", "100", "2026-27", 1), scheme("E2", "English", "100", "2026-27", 2)],
+    Marks_Log: [mark("100", "E1", "English", "80")],
+  });
+  const incompleteResolved = resolveClassResults(incompleteDb, "9", "A", ALL_EXAMS, "2026-27");
+  const incomplete = buildCombinedAllExamsModel(incompleteResolved.results, incompleteResolved.subjectColumns).rows
+    .find((row) => row.kitNo === "100");
+  assert.equal(incomplete.combinedGrade, "");
+  assert.equal(incomplete.rank, "");
+  assert.equal(incomplete.resultStatus, "INCOMPLETE");
+
+  const invalidDb = database({
+    exam_scheme: [scheme("E1", "English", "100", "2026-27", 1)],
+    Marks_Log: [mark("100", "E1", "English", "80"), mark("100", "E1", "English", "81")],
+  });
+  const invalidResolved = resolveClassResults(invalidDb, "9", "A", ALL_EXAMS, "2026-27");
+  const invalid = buildCombinedAllExamsModel(invalidResolved.results, invalidResolved.subjectColumns).rows
+    .find((row) => row.kitNo === "100");
+  assert.equal(invalid.combinedGrade, "");
+  assert.equal(invalid.resultStatus, "INVALID");
+
+  const configurationDb = database({
+    exam_scheme: [scheme("E1", "English", "100", "2026-27", "")],
+    Marks_Log: [mark("100", "E1", "English", "80")],
+  });
+  const configurationResolved = resolveClassResults(configurationDb, "9", "A", ALL_EXAMS, "2026-27");
+  const configuration = buildCombinedAllExamsModel(configurationResolved.results, configurationResolved.subjectColumns).rows
+    .find((row) => row.kitNo === "100");
+  assert.equal(configuration.combinedGrade, "");
+  assert.equal(configuration.resultStatus, "CONFIGURATION ERROR");
 });

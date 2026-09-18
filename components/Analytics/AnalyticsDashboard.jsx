@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import * as XLSX from "xlsx";
 import {
   BarChart,
   Bar,
@@ -36,8 +35,9 @@ import {
 } from "lucide-react";
 import { buildClassAnalyticsData } from "@/lib/analytics";
 import { downloadMeritMasterSheetPDF } from "@/lib/pdfGenerator";
-import { getAcademicSession, getAssessment } from "@/lib/examinationResults.mjs";
-import { formatAssessment } from "@/lib/resultPresentation.mjs";
+import { ALL_EXAMS, getAcademicSession, getAssessment, getSubjectTotal } from "@/lib/examinationResults.mjs";
+import { buildCombinedAllExamsModel, formatAggregateFraction } from "@/lib/resultPresentation.mjs";
+import { downloadCombinedResultWorkbook } from "@/lib/excelResultGenerator.mjs";
 
 // Custom data label renderer for Subject Average Performance Bar Chart
 const renderSubjectBarLabel = (props) => {
@@ -139,7 +139,9 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
     return buildClassAnalyticsData(db, selectedGrade, selectedSection, selectedExam, selectedSession);
   }, [db, selectedGrade, selectedSection, selectedExam, selectedSession]);
 
-  const { kpis, subjects, assessmentColumns, meritGrid, subjectAverages, gradeDistribution, empty } = analytics;
+  const { kpis, subjects, assessmentColumns, subjectColumns, meritGrid, subjectAverages, gradeDistribution, empty } = analytics;
+  const isAllExams = selectedExam === ALL_EXAMS;
+  const resultColumns = isAllExams ? subjectColumns : assessmentColumns;
 
   // Top 3 Merit Rankers
   const topRankers = useMemo(() => {
@@ -174,10 +176,10 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
       let aVal = a[sortField];
       let bVal = b[sortField];
 
-      const column = assessmentColumns.find((item) => item.key === sortField);
+      const column = resultColumns.find((item) => item.key === sortField);
       if (column) {
-        aVal = getAssessment(a, column)?.obtained;
-        bVal = getAssessment(b, column)?.obtained;
+        aVal = isAllExams ? getSubjectTotal(a, column.subject)?.obtained : getAssessment(a, column)?.obtained;
+        bVal = isAllExams ? getSubjectTotal(b, column.subject)?.obtained : getAssessment(b, column)?.obtained;
         if (aVal === undefined || aVal === null) aVal = -1;
         if (bVal === undefined || bVal === null) bVal = -1;
       }
@@ -194,68 +196,35 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
     });
 
     return list;
-  }, [meritGrid, searchQuery, sortField, sortDirection, assessmentColumns]);
+  }, [meritGrid, searchQuery, sortField, sortDirection, resultColumns, isAllExams]);
+
+  const combinedAllExamsRows = useMemo(() => {
+    if (!isAllExams) return new Map();
+    const model = buildCombinedAllExamsModel(displayMeritGrid, subjectColumns);
+    return new Map(model.rows.map((row) => [String(row.kitNo), row]));
+  }, [displayMeritGrid, isAllExams, subjectColumns]);
 
   // Export Merit Sheet as Excel (.xlsx) - with Legal Landscape page setup
-  const exportExcel = () => {
+  const exportExcel = async () => {
     const dataList =
       displayMeritGrid.length < meritGrid.length && displayMeritGrid.length > 0
         ? displayMeritGrid
         : meritGrid;
 
-    const rows = dataList.map((c) => {
-      const obj = {
-        "Merit Rank": c.meritRank || "-",
-        "Kit No": c.Kit_No,
-        "Cadet Name": c.Name,
-        Group: c.Group,
-      };
-
-      assessmentColumns.forEach((column) => {
-        const scoreObj = getAssessment(c, column);
-        const presentation = formatAssessment(scoreObj);
-        obj[column.label] = presentation.state === "PRESENT"
-          ? `${presentation.obtained} / ${presentation.maximum}`
-          : presentation.state === "ABSENT"
-          ? `ABSENT / ${presentation.maximum}`
-          : presentation.obtained;
+    try {
+      await downloadCombinedResultWorkbook({
+        meritGrid: dataList,
+        selectedExam,
+        assessmentColumns,
+        subjectColumns,
+        grade: selectedGrade,
+        section: selectedSection,
+        academicSession: selectedSession,
       });
-
-      obj["Total Marks"] = c.isFinal ? `${c.totalObtained} / ${c.totalMaxMarks}` : "-";
-      obj["Aggregate %"] = c.isFinal ? `${c.aggregatePct}%` : "-";
-      obj["Grade"] = c.letterGrade || "-";
-      obj["Status"] = c.passStatus;
-      obj["Absences"] = c.absentCount;
-      obj["Publication Status"] = c.publicationStatus || "Untracked";
-
-      return obj;
-    });
-
-    const worksheet = XLSX.utils.json_to_sheet(rows);
-    // Page setup: Legal Paper Size (paperSize: 5), Landscape / Horizontal orientation
-    worksheet["!pageSetup"] = { orientation: "landscape", paperSize: 5 };
-
-    // Auto-fit column widths
-    worksheet["!cols"] = [
-      { wch: 10 }, // Rank
-      { wch: 12 }, // Kit #
-      { wch: 28 }, // Name
-      { wch: 14 }, // Group
-      ...assessmentColumns.map((column) => ({ wch: Math.max(column.label.length + 4, 14) })),
-      { wch: 16 }, // Total Marks
-      { wch: 14 }, // Aggregate %
-      { wch: 10 }, // Grade
-      { wch: 12 }, // Status
-      { wch: 10 }, // Absences
-    ];
-
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Merit_Master_Sheet");
-    const safeExam = String(selectedExam || "All_Exams").replace(/[^a-zA-Z0-9]/g, "_");
-    XLSX.writeFile(
-      workbook,
-      `PSCC_Merit_Master_Sheet_Grade_${selectedGrade}_${selectedSection}_${safeExam}.xlsx`
-    );
+    } catch (error) {
+      console.error("Excel export failed:", error);
+      alert("Failed to generate the combined Excel result. Please try again.");
+    }
   };
 
   // Export Merit Sheet as PDF (Legal Paper, Horizontal / Landscape)
@@ -272,8 +241,10 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
       exam: selectedExam,
       subjects,
       assessmentColumns,
+      subjectColumns,
       subjectAverages,
       kpis,
+      academicSession: selectedSession,
     });
   };
 
@@ -854,10 +825,10 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
                         <ArrowUpDown className="w-3 h-3 opacity-60" />
                       </div>
                     </th>
-                    <th className="py-3 px-3 hidden sm:table-cell w-20">Group</th>
+                    {!isAllExams && <th className="py-3 px-3 hidden sm:table-cell w-20">Group</th>}
 
                     {/* Dynamic Subject Columns */}
-                    {assessmentColumns.map((column) => (
+                    {resultColumns.map((column) => (
                       <th
                         key={column.key}
                         onClick={() => handleSort(column.key)}
@@ -875,7 +846,7 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
                       className="py-3 px-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 text-center min-w-[90px]"
                     >
                       <div className="flex items-center justify-center gap-1">
-                        <span>Total</span>
+                        <span>{isAllExams ? "Grand Total" : "Total"}</span>
                         <ArrowUpDown className="w-3 h-3 opacity-60" />
                       </div>
                     </th>
@@ -884,12 +855,12 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
                       className="py-3 px-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 text-center min-w-[80px]"
                     >
                       <div className="flex items-center justify-center gap-1">
-                        <span>Agg %</span>
+                        <span>{isAllExams ? "Overall %" : "Agg %"}</span>
                         <ArrowUpDown className="w-3 h-3 opacity-60" />
                       </div>
                     </th>
-                    <th className="py-3 px-3 text-center w-16">Grade</th>
-                    <th className="py-3 px-3 text-center w-20">Status</th>
+                    <th className="py-3 px-3 text-center w-16">{isAllExams ? "Combined Grade" : "Grade"}</th>
+                    <th className="py-3 px-3 text-center w-20">{isAllExams ? "Result Status" : "Status"}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
@@ -934,12 +905,26 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
                       </td>
 
                       {/* Group */}
-                      <td className="py-2.5 px-3 hidden sm:table-cell text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                        {cadet.Group}
-                      </td>
+                      {!isAllExams && (
+                        <td className="py-2.5 px-3 hidden sm:table-cell text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                          {cadet.Group}
+                        </td>
+                      )}
 
                       {/* Dynamic Subject Columns */}
-                      {assessmentColumns.map((column) => {
+                      {resultColumns.map((column, columnIndex) => {
+                        if (isAllExams) {
+                          const cell = combinedAllExamsRows.get(String(cadet.Kit_No))?.subjectCells[columnIndex]
+                            || formatAggregateFraction(getSubjectTotal(cadet, column.subject));
+                          const isError = ["MISSING", "INVALID", "CONFIGURATION_ERROR"].includes(cell.state);
+                          return (
+                            <td key={column.key} className={`py-2.5 px-3 text-center font-bold tabular-nums ${
+                              isError ? "text-rose-600 dark:text-rose-400" : "text-slate-900 dark:text-white"
+                            }`}>
+                              {cell.display}
+                            </td>
+                          );
+                        }
                         const scoreObj = getAssessment(cadet, column);
                         if (!scoreObj) {
                           return (
@@ -975,19 +960,25 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
 
                       {/* Total */}
                       <td className="py-2.5 px-3 text-center font-extrabold text-slate-900 dark:text-white tabular-nums">
-                        {cadet.isFinal ? cadet.totalObtained : "-"}
-                        {cadet.isFinal && <span className="text-[10px] font-normal text-slate-400">/{cadet.totalMaxMarks}</span>}
+                        {isAllExams
+                          ? combinedAllExamsRows.get(String(cadet.Kit_No))?.grandTotal
+                          : cadet.isFinal ? cadet.totalObtained : "-"}
+                        {!isAllExams && cadet.isFinal && <span className="text-[10px] font-normal text-slate-400">/{cadet.totalMaxMarks}</span>}
                       </td>
 
                       {/* Aggregate % */}
                       <td className="py-2.5 px-3 text-center font-extrabold text-blue-700 dark:text-blue-400 tabular-nums">
-                        {cadet.isFinal ? `${cadet.aggregatePct}%` : "-"}
+                        {isAllExams
+                          ? combinedAllExamsRows.get(String(cadet.Kit_No))?.overallPercentage
+                          : cadet.isFinal ? `${cadet.aggregatePct}%` : "-"}
                       </td>
 
                       {/* Letter Grade */}
                       <td className="py-2.5 px-3 text-center font-bold">
                         <span className="px-1.5 py-0.5 rounded text-[10px] bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 font-extrabold">
-                          {cadet.letterGrade || "-"}
+                        {isAllExams
+                          ? combinedAllExamsRows.get(String(cadet.Kit_No))?.combinedGrade
+                          : cadet.letterGrade || "-"}
                         </span>
                       </td>
 
@@ -1000,7 +991,9 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
                               : "bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300"
                           }`}
                         >
-                          {cadet.passStatus}
+                        {isAllExams
+                          ? combinedAllExamsRows.get(String(cadet.Kit_No))?.resultStatus
+                          : cadet.passStatus}
                         </span>
                       </td>
                     </tr>

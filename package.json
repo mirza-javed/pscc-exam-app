@@ -13,6 +13,7 @@
   "dependencies": {
     "clsx": "^2.1.1",
     "docx": "^9.7.1",
+    "exceljs": "4.4.0",
     "googleapis": "^144.0.0",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
