@@ -1,6 +1,9 @@
-import { NextResponse } from "next/server";
+import { apiError, apiJson, unexpectedApiError } from "@/lib/apiErrors.mjs";
+import { createRequestContext, logApiEvent } from "@/lib/requestContext.mjs";
+import { validateSameOrigin } from "@/lib/requestForgery.mjs";
+import { checkRateLimit, getClientIp, rateLimitHeaders, retryAfterSeconds } from "@/lib/rateLimit.mjs";
 import { loadFreshDatabaseTabs, saveOrUpdateMarksLog } from "@/lib/googleSheets";
-import { getCurrentStaff } from "@/lib/staffAuth";
+import { getAuthenticatedEmail, getCurrentStaff } from "@/lib/staffAuth";
 import {
   authorizeMarksBatch,
 } from "@/lib/authorization.mjs";
@@ -41,23 +44,35 @@ function buildAuthorizationRecords(body) {
 }
 
 export async function POST(request) {
+  const context = createRequestContext(request, "/api/marks");
   try {
-    const current = await getCurrentStaff();
+    if (!validateSameOrigin(request).valid) {
+      logApiEvent("warn", "request_origin_rejected", context, { status: 403 });
+      return apiError({ requestId: context.requestId, status: 403, error: "This request did not come from an allowed origin.", code: "REQUEST_ORIGIN_REJECTED" });
+    }
+    const authenticatedEmail = await getAuthenticatedEmail();
+    const limit = await checkRateLimit({ policyName: "marksWrite", identifierKind: authenticatedEmail ? "email" : "ip", identifierValue: authenticatedEmail || getClientIp(request), context });
+    if (!limit.configured) {
+      return apiError({ requestId: context.requestId, status: 503, error: "Marks service is temporarily unavailable.", code: "RATE_LIMIT_CONFIGURATION_ERROR" });
+    }
+    if (!limit.allowed) {
+      return apiError({ requestId: context.requestId, status: 429, error: limit.policy.message, code: "RATE_LIMITED", headers: { ...rateLimitHeaders(limit), "Retry-After": retryAfterSeconds(limit) } });
+    }
+    const current = await getCurrentStaff(authenticatedEmail);
     if (!current) {
-      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+      logApiEvent("warn", "authentication_denied", context, { status: 401, actorRef: limit.actorRef });
+      return apiError({ requestId: context.requestId, status: 401, error: "Authentication is required.", code: "AUTHENTICATION_REQUIRED" });
     }
     if (!current.permissions.recognizedRole) {
-      return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+      logApiEvent("warn", "authorization_denied", context, { status: 403, actorRef: limit.actorRef, reason: "unrecognized_role" });
+      return apiError({ requestId: context.requestId, status: 403, error: "You are not authorized to save marks.", code: "FORBIDDEN" });
     }
     let body;
     try {
       body = await readJsonBody(request);
     } catch (error) {
       if (!(error instanceof RequestBodyError)) throw error;
-      return NextResponse.json(
-        { success: false, error: error.message, code: error.code },
-        { status: error.status }
-      );
+      return apiError({ requestId: context.requestId, status: error.status, error: error.message, code: error.code });
     }
 
     const db = await loadFreshDatabaseTabs(["Students", "Marks_Log", "exam_scheme"]);
@@ -65,30 +80,20 @@ export async function POST(request) {
     if (authorizationRecords) {
       const authorization = authorizeMarksBatch(current.permissions, authorizationRecords, db);
       if (!authorization.authorized) {
-        return NextResponse.json(
-          { success: false, error: "Forbidden: marks are outside your authorized teaching scope." },
-          { status: 403 }
-        );
+        logApiEvent("warn", "authorization_denied", context, { status: 403, actorRef: limit.actorRef, reason: "marks_scope" });
+        return apiError({ requestId: context.requestId, status: 403, error: "Marks are outside your authorized teaching scope.", code: "MARKS_SCOPE_FORBIDDEN" });
       }
     }
 
     const validation = validateMarksSubmission(body, db);
     if (!validation.valid) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Marks submission contains validation errors.",
-          code: "MARKS_VALIDATION_FAILED",
-          details: validation.errors,
-        },
-        { status: 422 }
-      );
+      return apiError({ requestId: context.requestId, status: 422, error: "Marks submission contains validation errors.", code: "MARKS_VALIDATION_FAILED", details: validation.errors });
     }
 
     // Structurally valid requests always produce authorization records above.
     // This defensive check prevents future schema changes from bypassing scope enforcement.
     if (!authorizationRecords) {
-      return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+      return apiError({ requestId: context.requestId, status: 403, error: "You are not authorized to save marks.", code: "FORBIDDEN" });
     }
 
     const result = await saveOrUpdateMarksLog(validation.records);
@@ -100,18 +105,14 @@ export async function POST(request) {
         ? `Successfully updated ${result.updatedCount} student marks in the Master Database (previous Submission IDs preserved).`
         : `Successfully recorded ${result.insertedCount} student marks to the Master Database.`;
 
-    return NextResponse.json({
+    return apiJson({
       success: true,
       count: result.totalCount,
       updatedCount: result.updatedCount,
       insertedCount: result.insertedCount,
       message,
-    });
+    }, { requestId: context.requestId, headers: rateLimitHeaders(limit) });
   } catch (error) {
-    console.error("Marks save error:", error);
-    return NextResponse.json(
-      { success: false, error: "Unable to save marks at this time." },
-      { status: 500 }
-    );
+    return unexpectedApiError({ context, event: "marks_write_failed", error, publicMessage: "Unable to save marks at this time.", code: "MARKS_SAVE_FAILED" });
   }
 }

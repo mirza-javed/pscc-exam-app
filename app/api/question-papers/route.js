@@ -1,11 +1,14 @@
-import { NextResponse } from "next/server";
+import { apiError, apiJson, unexpectedApiError } from "@/lib/apiErrors.mjs";
+import { createRequestContext, logApiEvent, serializeErrorForLog } from "@/lib/requestContext.mjs";
+import { validateSameOrigin } from "@/lib/requestForgery.mjs";
+import { checkRateLimit, getClientIp, rateLimitHeaders, retryAfterSeconds } from "@/lib/rateLimit.mjs";
 import {
   appendQuestionPaper,
   loadFreshDatabaseTabs,
   SheetWriteError,
   updateQuestionPaperStatus,
 } from "@/lib/googleSheets";
-import { getCurrentStaff } from "@/lib/staffAuth";
+import { getAuthenticatedEmail, getCurrentStaff } from "@/lib/staffAuth";
 import {
   buildUniqueIndex,
   canReviewPaper,
@@ -20,47 +23,64 @@ import { readJsonBody, RequestBodyError } from "@/lib/requestBody.mjs";
 
 export const dynamic = "force-dynamic";
 
-function requestBodyErrorResponse(error) {
-  return NextResponse.json(
-    { success: false, error: error.message, code: error.code },
-    { status: error.status }
-  );
+function requestBodyErrorResponse(error, requestId) {
+  return apiError({ requestId, status: error.status, error: error.message, code: error.code });
 }
 
-function validationErrorResponse(code, errors, status = 422) {
-  return NextResponse.json(
-    { success: false, error: "Request validation failed.", code, details: errors },
-    { status }
-  );
+function validationErrorResponse(code, errors, requestId, status = 422) {
+  return apiError({ requestId, status, error: "Request validation failed.", code, details: errors });
+}
+
+async function beginWriteRequest(request, context, policyName, publicServiceName) {
+  if (!validateSameOrigin(request).valid) {
+    logApiEvent("warn", "request_origin_rejected", context, { status: 403 });
+    return { response: apiError({ requestId: context.requestId, status: 403, error: "This request did not come from an allowed origin.", code: "REQUEST_ORIGIN_REJECTED" }) };
+  }
+  const authenticatedEmail = await getAuthenticatedEmail();
+  const limit = await checkRateLimit({ policyName, identifierKind: authenticatedEmail ? "email" : "ip", identifierValue: authenticatedEmail || getClientIp(request), context });
+  if (!limit.configured) {
+    return { response: apiError({ requestId: context.requestId, status: 503, error: `${publicServiceName} is temporarily unavailable.`, code: "RATE_LIMIT_CONFIGURATION_ERROR" }) };
+  }
+  if (!limit.allowed) {
+    return { response: apiError({ requestId: context.requestId, status: 429, error: limit.policy.message, code: "RATE_LIMITED", headers: { ...rateLimitHeaders(limit), "Retry-After": retryAfterSeconds(limit) } }) };
+  }
+  const current = await getCurrentStaff(authenticatedEmail);
+  if (!current) {
+    logApiEvent("warn", "authentication_denied", context, { status: 401, actorRef: limit.actorRef });
+    return { response: apiError({ requestId: context.requestId, status: 401, error: "Authentication is required.", code: "AUTHENTICATION_REQUIRED" }) };
+  }
+  if (!current.permissions.recognizedRole) {
+    logApiEvent("warn", "authorization_denied", context, { status: 403, actorRef: limit.actorRef, reason: "unrecognized_role" });
+    return { response: apiError({ requestId: context.requestId, status: 403, error: "You are not authorized to use this service.", code: "FORBIDDEN" }) };
+  }
+  return { current, limit };
 }
 
 export async function POST(request) {
+  const context = createRequestContext(request, "/api/question-papers");
   let current = null;
+  let limit = null;
   try {
-    current = await getCurrentStaff();
-    if (!current) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-    if (!current.permissions.recognizedRole) {
-      return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
-    }
+    const started = await beginWriteRequest(request, context, "paperSubmit", "Question paper service");
+    if (started.response) return started.response;
+    ({ current, limit } = started);
     let body;
     try {
       body = await readJsonBody(request);
     } catch (error) {
-      if (error instanceof RequestBodyError) return requestBodyErrorResponse(error);
+      if (error instanceof RequestBodyError) return requestBodyErrorResponse(error, context.requestId);
       throw error;
     }
 
     const validation = validatePaperSubmission(body);
     if (!validation.valid) {
-      return validationErrorResponse("PAPER_VALIDATION_FAILED", validation.errors);
+      return validationErrorResponse("PAPER_VALIDATION_FAILED", validation.errors, context.requestId);
     }
     const { grade, subject, examId, submissionType, requestId, fileUrl, textContent } = validation.value;
 
     if (!canSubmitPaper(current.permissions, grade, subject)) {
-      return NextResponse.json(
-        { success: false, error: "Forbidden: paper is outside your authorized teaching scope." },
-        { status: 403 }
-      );
+      logApiEvent("warn", "authorization_denied", context, { status: 403, actorRef: limit.actorRef, reason: "paper_submit_scope" });
+      return apiError({ requestId: context.requestId, status: 403, error: "The paper is outside your authorized teaching scope.", code: "PAPER_SCOPE_FORBIDDEN" });
     }
 
     const submissionId = `QP-${requestId}`;
@@ -82,44 +102,34 @@ export async function POST(request) {
 
     const result = await appendQuestionPaper(record);
 
-    return NextResponse.json({
+    return apiJson({
       success: true,
       submissionId,
       idempotent: result.idempotent,
       message: "Question paper successfully submitted for academic review.",
-    });
+    }, { requestId: context.requestId, headers: rateLimitHeaders(limit) });
   } catch (error) {
-    console.error("Question paper submission failed:", {
-      teacherId: current?.staff?.Teacher_ID || null,
-      code: error?.code || null,
-      error,
-    });
     if (error instanceof SheetWriteError && error.code === "SUBMISSION_ID_CONFLICT") {
-      return NextResponse.json(
-        { success: false, error: "This submission request conflicts with an existing record.", code: error.code },
-        { status: 409 }
-      );
+      logApiEvent("warn", "paper_submission_conflict", context, { status: 409, ...serializeErrorForLog(error) });
+      return apiError({ requestId: context.requestId, status: 409, error: "This submission request conflicts with an existing record.", code: error.code });
     }
-    return NextResponse.json(
-      { success: false, error: "Unable to submit the question paper at this time." },
-      { status: 500 }
-    );
+    return unexpectedApiError({ context, event: "paper_submission_failed", error, publicMessage: "Unable to submit the question paper at this time.", code: "PAPER_SUBMISSION_FAILED" });
   }
 }
 
 export async function PATCH(request) {
+  const context = createRequestContext(request, "/api/question-papers");
   let current = null;
+  let limit = null;
   try {
-    current = await getCurrentStaff();
-    if (!current) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-    if (!current.permissions.recognizedRole) {
-      return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
-    }
+    const started = await beginWriteRequest(request, context, "paperReview", "Question paper review service");
+    if (started.response) return started.response;
+    ({ current, limit } = started);
     let body;
     try {
       body = await readJsonBody(request);
     } catch (error) {
-      if (error instanceof RequestBodyError) return requestBodyErrorResponse(error);
+      if (error instanceof RequestBodyError) return requestBodyErrorResponse(error, context.requestId);
       throw error;
     }
 
@@ -128,13 +138,11 @@ export async function PATCH(request) {
     const submissionKey = normalizeValue(body?.submissionId);
     const paper = papers.unique.get(submissionKey);
     if (!paper || papers.ambiguous.has(submissionKey)) {
-      return NextResponse.json(
-        { success: false, error: "Submission record not found in database." },
-        { status: 404 }
-      );
+      return apiError({ requestId: context.requestId, status: 404, error: "Submission record not found in database.", code: "PAPER_NOT_FOUND" });
     }
     if (!canReviewPaper(current.permissions, paper)) {
-      return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+      logApiEvent("warn", "authorization_denied", context, { status: 403, actorRef: limit.actorRef, reason: "paper_review_scope" });
+      return apiError({ requestId: context.requestId, status: 403, error: "You are not authorized to review this paper.", code: "FORBIDDEN" });
     }
 
     const validation = validatePaperReview(body, paper);
@@ -145,6 +153,7 @@ export async function PATCH(request) {
       return validationErrorResponse(
         transitionError ? "INVALID_STATUS_TRANSITION" : "PAPER_REVIEW_VALIDATION_FAILED",
         validation.errors,
+        context.requestId,
         transitionError ? 409 : 422
       );
     }
@@ -158,35 +167,22 @@ export async function PATCH(request) {
     );
 
     if (!result.found) {
-      return NextResponse.json(
-        { success: false, error: "Submission record not found in database." },
-        { status: 404 }
-      );
+      return apiError({ requestId: context.requestId, status: 404, error: "Submission record not found in database.", code: "PAPER_NOT_FOUND" });
     }
 
-    return NextResponse.json({
+    return apiJson({
       success: true,
       idempotent: result.idempotent,
       message: `Submission status updated to '${status}'.`,
-    });
+    }, { requestId: context.requestId, headers: rateLimitHeaders(limit) });
   } catch (error) {
-    console.error("Question paper review failed:", {
-      teacherId: current?.staff?.Teacher_ID || null,
-      code: error?.code || null,
-      error,
-    });
     if (
       error instanceof SheetWriteError &&
       ["PAPER_CHANGED", "INVALID_STATUS_TRANSITION"].includes(error.code)
     ) {
-      return NextResponse.json(
-        { success: false, error: "The paper changed before this review could be saved. Refresh and try again.", code: error.code },
-        { status: 409 }
-      );
+      logApiEvent("warn", "paper_review_conflict", context, { status: 409, ...serializeErrorForLog(error) });
+      return apiError({ requestId: context.requestId, status: 409, error: "The paper changed before this review could be saved. Refresh and try again.", code: error.code });
     }
-    return NextResponse.json(
-      { success: false, error: "Unable to update the paper review at this time." },
-      { status: 500 }
-    );
+    return unexpectedApiError({ context, event: "paper_review_failed", error, publicMessage: "Unable to update the paper review at this time.", code: "PAPER_REVIEW_FAILED" });
   }
 }

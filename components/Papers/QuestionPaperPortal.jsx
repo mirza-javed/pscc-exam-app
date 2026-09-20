@@ -502,7 +502,8 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
       const data = await res.json();
       if (!data.success) {
         if (res.status < 500) submissionRequestIdRef.current = null;
-        const error = new Error(data.error || "Failed to submit paper.");
+        const reference = data.requestId ? ` (Reference: ${data.requestId})` : "";
+        const error = new Error(`${data.error || "Failed to submit paper."}${reference}`);
         error.status = res.status;
         throw error;
       }
@@ -543,7 +544,8 @@ export default function QuestionPaperPortal({ db = {}, onSubmissionComplete }) {
 
       const data = await res.json();
       if (!data.success) {
-        throw new Error(data.error || "Failed to update status.");
+        const reference = data.requestId ? ` (Reference: ${data.requestId})` : "";
+        throw new Error(`${data.error || "Failed to update status."}${reference}`);
       }
 
       setToast({

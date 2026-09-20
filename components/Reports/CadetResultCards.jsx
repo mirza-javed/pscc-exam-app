@@ -368,7 +368,10 @@ export default function CadetResultCards({ db = {}, onPublicationSaved }) {
         }),
       });
       const payload = await response.json();
-      if (!response.ok || !payload.success) throw new Error(payload.error || "Publication could not be recorded.");
+      if (!response.ok || !payload.success) {
+        const reference = payload.requestId ? ` (Reference: ${payload.requestId})` : "";
+        throw new Error(`${payload.error || "Publication could not be recorded."}${reference}`);
+      }
       setToastMessage({ type: "success", message: `Result status recorded as ${status}.` });
       await onPublicationSaved?.();
     } catch (error) {

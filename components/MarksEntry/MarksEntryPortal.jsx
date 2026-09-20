@@ -511,7 +511,8 @@ export default function MarksEntryPortal({ db = {}, onMarksSaved }) {
         const detailMessage = firstDetail
           ? `${firstDetail.row ? `Row ${firstDetail.row}: ` : ""}${firstDetail.message}`
           : "";
-        throw new Error(detailMessage || data.error || "Failed to save marks.");
+        const reference = data.requestId ? ` (Reference: ${data.requestId})` : "";
+        throw new Error(`${detailMessage || data.error || "Failed to save marks."}${reference}`);
       }
 
       // Clear local draft on successful save

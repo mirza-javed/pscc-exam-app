@@ -73,7 +73,8 @@ export default function Home() {
       const json = await res.json();
 
       if (!json.success) {
-        throw new Error(json.error || "Failed to load master database");
+        const reference = json.requestId ? ` (Reference: ${json.requestId})` : "";
+        throw new Error(`${json.error || "Failed to load master database"}${reference}`);
       }
 
       setDbData(json);
