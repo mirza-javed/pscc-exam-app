@@ -4,7 +4,7 @@ import {
   buildCombinedResultWorkbook,
   buildIndividualResultWorkbook,
 } from "../lib/excelResultGenerator.mjs";
-import { ALL_EXAMS, resolveClassResults } from "../lib/examinationResults.mjs";
+import { ALL_EXAMS, ALL_SECTIONS, resolveClassResults } from "../lib/examinationResults.mjs";
 
 function scheme(examId, examName, examOrder, subject, maximum) {
   return {
@@ -113,6 +113,45 @@ test("combined All Exams workbook uses dynamic subjects and separates grade from
   assert.ok(worksheet.getColumn(3).width >= 28);
   assert.equal(worksheet.pageSetup.orientation, "landscape");
   assert.equal(worksheet.pageSetup.printTitlesRow, "5:5");
+  await assertSerializes(workbook);
+});
+
+test("ALL Sections workbook exports the full grade cohort with actual sections and combined ranks", async () => {
+  const db = {
+    Students: [
+      { Kit_No: "100", Name: "Cadet A", Grade: "9", Section: "A" },
+      { Kit_No: "200", Name: "Cadet B", Grade: "9", Section: "B" },
+      { Kit_No: "300", Name: "Cadet C", Grade: "9", Section: "C" },
+    ],
+    exam_scheme: [scheme("E1", "Monthly Test", 1, "English", 100)],
+    Marks_Log: [
+      mark("100", "E1", "English", 70),
+      mark("200", "E1", "English", 90),
+      mark("300", "E1", "English", 80),
+    ],
+    Grading_System: [],
+  };
+  const resolved = resolveClassResults(db, "9", ALL_SECTIONS, "E1", "2026-27");
+  const workbook = await buildCombinedResultWorkbook({
+    meritGrid: resolved.results,
+    selectedExam: "E1",
+    assessmentColumns: resolved.assessmentColumns,
+    grade: "9",
+    section: ALL_SECTIONS,
+    academicSession: "2026-27",
+  });
+  const worksheet = workbook.getWorksheet("Merit_Master_Sheet");
+
+  assert.deepEqual(rowValues(worksheet, 5, 9), [
+    "Grade/Class Rank", "Kit_No", "Name", "Section", "English", "Grand Total", "Overall %", "Combined Grade", "Result Status",
+  ]);
+  assert.deepEqual(
+    [6, 7, 8].map((row) => rowValues(worksheet, row, 9).slice(0, 4)),
+    [[1, "200", "Cadet B", "B"], [2, "300", "Cadet C", "C"], [3, "100", "Cadet A", "A"]]
+  );
+  assert.equal(worksheet.getCell("A2").value, "GRADE / CLASS MERIT MASTER SHEET");
+  assert.match(worksheet.getCell("A3").value, /Sections: All/);
+  assert.equal(worksheet.views[0].xSplit, 4);
   await assertSerializes(workbook);
 });
 

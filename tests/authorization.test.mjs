@@ -141,3 +141,41 @@ test("ambiguous student identifiers are flagged and their marks remain hidden", 
   assert.equal(projected.Marks_Log.length, 0);
   assert.deepEqual(projected.Authorization_Issues.duplicateKitNos, ["100"]);
 });
+
+test("ALL-section eligibility requires read access to every authoritative section", () => {
+  const db = {
+    Students: [
+      { Kit_No: "100", Grade: "9", Section: "A" },
+      { Kit_No: "101", Grade: "9", Section: "B" },
+      { Kit_No: "102", Grade: "9", Section: "C" },
+    ],
+    Teaching_Assignments: [],
+  };
+  const partialAssignments = [{
+    Teacher_ID: "T-1",
+    Subject: "Physics",
+    Assigned_Grade: "9",
+    Assigned_Section_A: "yes",
+    Assigned_Section_B: "yes",
+    Assigned_Section_C: "no",
+  }];
+  const fullAssignments = [{
+    ...partialAssignments[0],
+    Assigned_Section_C: "yes",
+  }];
+  const staff = { Teacher_ID: "T-1", Role: "Teacher" };
+
+  const partialPermissions = getStaffPermissions(staff, { Teaching_Assignments: partialAssignments });
+  const partial = projectDatabase(db, staff, partialPermissions);
+  assert.equal(partial.Authorization_Scope.fullGradeRead["9"], false);
+  assert.deepEqual(partial.Students.map((student) => student.Section), ["A", "B"]);
+
+  const fullPermissions = getStaffPermissions(staff, { Teaching_Assignments: fullAssignments });
+  const full = projectDatabase(db, staff, fullPermissions);
+  assert.equal(full.Authorization_Scope.fullGradeRead["9"], true);
+  assert.deepEqual(full.Students.map((student) => student.Section), ["A", "B", "C"]);
+
+  const principalStaff = { Teacher_ID: "P-1", Role: "Principal" };
+  const principal = projectDatabase(db, principalStaff, getStaffPermissions(principalStaff, db));
+  assert.equal(principal.Authorization_Scope.fullGradeRead["9"], true);
+});

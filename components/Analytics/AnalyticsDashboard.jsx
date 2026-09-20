@@ -35,7 +35,13 @@ import {
 } from "lucide-react";
 import { buildClassAnalyticsData } from "@/lib/analytics";
 import { downloadMeritMasterSheetPDF } from "@/lib/pdfGenerator";
-import { ALL_EXAMS, getAcademicSession, getAssessment, getSubjectTotal } from "@/lib/examinationResults.mjs";
+import {
+  ALL_EXAMS,
+  ALL_SECTIONS,
+  getAcademicSession,
+  getAssessment,
+  getSubjectTotal,
+} from "@/lib/examinationResults.mjs";
 import { buildCombinedAllExamsModel, formatAggregateFraction } from "@/lib/resultPresentation.mjs";
 import { downloadCombinedResultWorkbook } from "@/lib/excelResultGenerator.mjs";
 
@@ -134,6 +140,22 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
     return list.length > 0 ? list : ["A", "B", "C"];
   }, [db, selectedGrade]);
 
+  const canViewAllSections = useMemo(() => {
+    const gradeKey = String(selectedGrade || "").trim().toLowerCase();
+    return availableSections.length > 1 && db.Authorization_Scope?.fullGradeRead?.[gradeKey] === true;
+  }, [availableSections, db, selectedGrade]);
+
+  const sectionOptions = useMemo(
+    () => canViewAllSections ? [ALL_SECTIONS, ...availableSections] : availableSections,
+    [availableSections, canViewAllSections]
+  );
+
+  useEffect(() => {
+    if (sectionOptions.length > 0 && !sectionOptions.includes(selectedSection)) {
+      setSelectedSection(sectionOptions[0]);
+    }
+  }, [sectionOptions, selectedSection]);
+
   // Compute analytics data for current filter
   const analytics = useMemo(() => {
     return buildClassAnalyticsData(db, selectedGrade, selectedSection, selectedExam, selectedSession);
@@ -141,12 +163,11 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
 
   const { kpis, subjects, assessmentColumns, subjectColumns, meritGrid, subjectAverages, gradeDistribution, empty } = analytics;
   const isAllExams = selectedExam === ALL_EXAMS;
+  const isAllSections = selectedSection === ALL_SECTIONS;
+  const classLabel = isAllSections
+    ? `Grade ${selectedGrade} — All Sections`
+    : `Grade ${selectedGrade}-${selectedSection}`;
   const resultColumns = isAllExams ? subjectColumns : assessmentColumns;
-
-  // Top 3 Merit Rankers
-  const topRankers = useMemo(() => {
-    return meritGrid.filter((c) => c.meritRank && c.meritRank <= 3);
-  }, [meritGrid]);
 
   // Handle Table Sorting
   const handleSort = (field) => {
@@ -168,7 +189,8 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
         const id = String(c.Kit_No).toLowerCase();
         const name = String(c.Name).toLowerCase();
         const group = String(c.Group).toLowerCase();
-        return id.includes(q) || name.includes(q) || group.includes(q);
+        const section = String(c.Section || "").toLowerCase();
+        return id.includes(q) || name.includes(q) || group.includes(q) || (isAllSections && section.includes(q));
       });
     }
 
@@ -196,24 +218,19 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
     });
 
     return list;
-  }, [meritGrid, searchQuery, sortField, sortDirection, resultColumns, isAllExams]);
+  }, [meritGrid, searchQuery, sortField, sortDirection, resultColumns, isAllExams, isAllSections]);
 
   const combinedAllExamsRows = useMemo(() => {
     if (!isAllExams) return new Map();
     const model = buildCombinedAllExamsModel(displayMeritGrid, subjectColumns);
-    return new Map(model.rows.map((row) => [String(row.kitNo), row]));
+    return new Map(model.rows.map((row) => [`${row.section}\u0000${row.kitNo}`, row]));
   }, [displayMeritGrid, isAllExams, subjectColumns]);
 
   // Export Merit Sheet as Excel (.xlsx) - with Legal Landscape page setup
   const exportExcel = async () => {
-    const dataList =
-      displayMeritGrid.length < meritGrid.length && displayMeritGrid.length > 0
-        ? displayMeritGrid
-        : meritGrid;
-
     try {
       await downloadCombinedResultWorkbook({
-        meritGrid: dataList,
+        meritGrid,
         selectedExam,
         assessmentColumns,
         subjectColumns,
@@ -229,13 +246,8 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
 
   // Export Merit Sheet as PDF (Legal Paper, Horizontal / Landscape)
   const handleDownloadPDF = () => {
-    const dataList =
-      displayMeritGrid.length < meritGrid.length && displayMeritGrid.length > 0
-        ? displayMeritGrid
-        : meritGrid;
-
     downloadMeritMasterSheetPDF({
-      meritGrid: dataList,
+      meritGrid,
       grade: selectedGrade,
       section: selectedSection,
       exam: selectedExam,
@@ -326,8 +338,10 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
               onChange={(e) => setSelectedSection(e.target.value)}
               className="w-full min-h-[44px] px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs sm:text-sm font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-600"
             >
-              {availableSections.map((sec, idx) => (
-                <option key={idx} value={sec}>Section {sec}</option>
+              {sectionOptions.map((sec) => (
+                <option key={sec} value={sec}>
+                  {sec === ALL_SECTIONS ? "ALL — Grade/Class" : `Section ${sec}`}
+                </option>
               ))}
             </select>
           </div>
@@ -360,7 +374,7 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
               No Examination Data Recorded Yet
             </h3>
             <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-              No marks have been logged in the Master Database for Grade {selectedGrade}-{selectedSection} under `{selectedExam}`.
+              No marks have been logged in the Master Database for {classLabel} under `{selectedExam}`.
             </p>
           </div>
           {onNavigateToMarks && (
@@ -439,9 +453,26 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
                 {kpis.evaluatedCadets} / {kpis.totalCadets}
               </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                Enrolled in Grade {selectedGrade}-{selectedSection}
+                Enrolled in {classLabel}
               </p>
             </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3" aria-label="Cohort attendance and result summary">
+            {[
+              ["Appeared", kpis.appearedCount, "Valid participation in at least one required subject"],
+              ["Fully Absent", kpis.absentCount, "Absent in every required subject"],
+              ["Incomplete", kpis.incompleteCadets, "One or more required marks are missing"],
+              ["Invalid", kpis.invalidCadets, "Invalid data or configuration"],
+              ["Fail Rate", `${kpis.failRate}%`, `${kpis.failedCount} complete, valid result(s)`],
+              ["Performance Range", `${kpis.lowestPercentage}%–${kpis.highestPercentage}%`, "Normalized by percentage"],
+            ].map(([label, value, description]) => (
+              <div key={label} className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+                <div className="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</div>
+                <div className="mt-1 text-lg font-extrabold tabular-nums text-slate-900 dark:text-white">{value}</div>
+                <div className="mt-1 text-[10px] leading-4 text-slate-500 dark:text-slate-400">{description}</div>
+              </div>
+            ))}
           </div>
 
           {/* Interactive Vector Charts Grid */}
@@ -506,7 +537,7 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
                         fontSize: "12px",
                       }}
                       formatter={(value, name, item) => [
-                        `${value}% (Score: ${item.payload.averageScore}/${item.payload.averageMax}) • Pass Rate: ${item.payload.passRate}%`,
+                        `${value}% avg • High ${item.payload.highestPercentage}% • Low ${item.payload.lowestPercentage}% • Pass ${item.payload.passRate}% • Fail ${item.payload.failRate}% • ${item.payload.absentStudents} absent cadet(s)`,
                         "Class Avg",
                       ]}
                     />
@@ -625,7 +656,7 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
                             ? ((val / kpis.evaluatedCadets) * 100).toFixed(1)
                             : "0";
                         return [
-                          `${val} Cadet(s) (${pct}% of section)`,
+                          `${val} Cadet(s) (${pct}% of cohort)`,
                           `Grade ${item.payload.grade}`,
                         ];
                       }}
@@ -651,20 +682,18 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
             </div>
           </div>
 
-          {/* Top 3 Merit Rankers & Academic Support Split */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            {/* Top 3 Merit Rankers */}
+          {/* Merit leaders, bottom performers, and academic support */}
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
             <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
               <div className="flex items-center space-x-2">
                 <Award className="w-5 h-5 text-amber-500" />
                 <h3 className="font-bold text-sm text-slate-900 dark:text-white">
-                  Top Merit Cadets (Section Standings)
+                  Top Merit Cadets ({isAllSections ? "Grade/Class Standings" : "Section Standings"})
                 </h3>
               </div>
 
               <div className="space-y-2">
-                {topRankers.slice(0, 3).map((cadet, i) => {
-                  const medals = ["🥇", "🥈", "🥉"];
+                {kpis.topPerformers.map((cadet) => {
                   const borderGradients = [
                     "border-amber-400 dark:border-amber-600 bg-amber-50/50 dark:bg-amber-950/30",
                     "border-slate-300 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40",
@@ -672,17 +701,19 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
                   ];
                   return (
                     <div
-                      key={cadet.Kit_No}
-                      className={`p-3 rounded-xl border ${borderGradients[i] || "border-slate-200"} flex items-center justify-between`}
+                      key={`${cadet.Section}-${cadet.Kit_No}`}
+                      className={`p-3 rounded-xl border ${borderGradients[cadet.meritRank - 1] || "border-slate-200"} flex items-center justify-between gap-3`}
                     >
                       <div className="flex items-center space-x-3">
-                        <span className="text-xl font-bold">{medals[i] || `#${cadet.meritRank}`}</span>
+                        <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-extrabold text-white dark:bg-slate-100 dark:text-slate-900">
+                          #{cadet.meritRank}
+                        </span>
                         <div>
                           <div className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">
                             {cadet.Name}
                           </div>
                           <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                            Kit #{cadet.Kit_No} • {cadet.Group}
+                            Kit #{cadet.Kit_No} • {isAllSections ? `Section ${cadet.Section} • ` : ""}{cadet.Group}
                           </div>
                         </div>
                       </div>
@@ -701,6 +732,38 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
               </div>
             </div>
 
+            <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
+              <div className="flex items-center space-x-2">
+                <TrendingUp className="w-5 h-5 rotate-180 text-blue-500" />
+                <h3 className="font-bold text-sm text-slate-900 dark:text-white">
+                  Bottom Performers (Complete & Valid)
+                </h3>
+              </div>
+              <div className="space-y-2">
+                {kpis.bottomPerformers.map((cadet) => (
+                  <div
+                    key={`${cadet.Section}-${cadet.Kit_No}`}
+                    className="p-3 rounded-xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/40 dark:bg-blue-950/20 flex items-center justify-between gap-3"
+                  >
+                    <div>
+                      <div className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">
+                        {cadet.Name}
+                      </div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                        Bottom #{cadet.bottomRank} • Kit #{cadet.Kit_No}{isAllSections ? ` • Section ${cadet.Section}` : ""}
+                      </div>
+                    </div>
+                    <div className="text-right text-xs font-extrabold text-blue-700 dark:text-blue-300 tabular-nums">
+                      {cadet.aggregatePct}%
+                      <div className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                        {cadet.totalObtained}/{cadet.totalMaxMarks}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             {/* Academic Support / At-Risk Cadets */}
             <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
               <div className="flex items-center space-x-2">
@@ -712,18 +775,18 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
 
               {kpis.atRiskCadets.length === 0 ? (
                 <div className="p-6 text-center text-xs text-emerald-600 dark:text-emerald-400 font-semibold bg-emerald-50 dark:bg-emerald-950/30 rounded-xl border border-emerald-200 dark:border-emerald-900">
-                  🎉 Outstanding! All assessed cadets in this section have cleared passing thresholds with zero failed subjects.
+                  All assessed cadets in this cohort have cleared the passing thresholds with zero failed subjects.
                 </div>
               ) : (
                 <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
                   {kpis.atRiskCadets.map((cadet) => (
                     <div
-                      key={cadet.Kit_No}
+                      key={`${cadet.Section}-${cadet.Kit_No}`}
                       className="p-2.5 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/40 dark:bg-rose-950/20 flex items-center justify-between text-xs"
                     >
                       <div>
                         <div className="font-bold text-slate-900 dark:text-white">
-                          {cadet.Name} (Kit #{cadet.Kit_No})
+                          {cadet.Name} (Kit #{cadet.Kit_No}{isAllSections ? `, Section ${cadet.Section}` : ""})
                         </div>
                         <div className="text-[11px] text-rose-600 dark:text-rose-400">
                           {cadet.failedSubjectCount > 0
@@ -747,7 +810,7 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="font-bold text-sm sm:text-base text-slate-900 dark:text-white">
-                    Section Merit Master Sheet (Pivot Grid)
+                    {isAllSections ? "Grade/Class Merit Master Sheet" : "Section Merit Master Sheet"} (Pivot Grid)
                   </h3>
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-900">
                     {displayMeritGrid.length} of {meritGrid.length} Cadets
@@ -764,7 +827,7 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
                   onClick={handleDownloadPDF}
                   disabled={empty || meritGrid.length === 0}
                   className="px-3.5 py-1.5 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 disabled:opacity-50"
-                  title="Download official Section Merit Master Sheet as PDF (Horizontal / Legal Size Paper)"
+                  title={`Download official ${isAllSections ? "Grade/Class" : "Section"} Merit Master Sheet as PDF`}
                 >
                   <FileText className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
                   <span>Download PDF (Legal)</span>
@@ -774,7 +837,7 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
                   onClick={exportExcel}
                   disabled={empty || meritGrid.length === 0}
                   className="px-3.5 py-1.5 rounded-xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 disabled:opacity-50"
-                  title="Download Section Merit Master Sheet as Excel Spreadsheet (.xlsx)"
+                  title={`Download ${isAllSections ? "Grade/Class" : "Section"} Merit Master Sheet as Excel`}
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                   <span>Download Excel (.xlsx)</span>
@@ -786,7 +849,8 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Filter student / kit no..."
+                    placeholder={isAllSections ? "Filter student / kit / section..." : "Filter student / kit no..."}
+                    aria-label={isAllSections ? "Filter by student, kit number, group, or section" : "Filter by student, kit number, or group"}
                     className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-600"
                   />
                 </div>
@@ -803,7 +867,7 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
                       className="py-3 px-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 text-center w-14"
                     >
                       <div className="flex items-center justify-center gap-1">
-                        <span>Rank</span>
+                        <span>{isAllSections ? "Grade/Class Rank" : "Rank"}</span>
                         <ArrowUpDown className="w-3 h-3 opacity-60" />
                       </div>
                     </th>
@@ -825,6 +889,17 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
                         <ArrowUpDown className="w-3 h-3 opacity-60" />
                       </div>
                     </th>
+                    {isAllSections && (
+                      <th
+                        onClick={() => handleSort("Section")}
+                        className="py-3 px-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 text-center w-20"
+                      >
+                        <div className="flex items-center justify-center gap-1">
+                          <span>Section</span>
+                          <ArrowUpDown className="w-3 h-3 opacity-60" />
+                        </div>
+                      </th>
+                    )}
                     {!isAllExams && <th className="py-3 px-3 hidden sm:table-cell w-20">Group</th>}
 
                     {/* Dynamic Subject Columns */}
@@ -866,7 +941,7 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
                   {displayMeritGrid.map((cadet) => (
                     <tr
-                      key={cadet.Kit_No}
+                      key={`${cadet.Section}-${cadet.Kit_No}`}
                       className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors ${
                         cadet.meritRank === 1
                           ? "bg-amber-50/30 dark:bg-amber-950/20"
@@ -904,6 +979,12 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
                         {cadet.Name}
                       </td>
 
+                      {isAllSections && (
+                        <td className="py-2.5 px-3 text-center font-bold text-slate-700 dark:text-slate-200">
+                          {cadet.Section}
+                        </td>
+                      )}
+
                       {/* Group */}
                       {!isAllExams && (
                         <td className="py-2.5 px-3 hidden sm:table-cell text-[11px] text-slate-500 dark:text-slate-400 truncate">
@@ -914,7 +995,8 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
                       {/* Dynamic Subject Columns */}
                       {resultColumns.map((column, columnIndex) => {
                         if (isAllExams) {
-                          const cell = combinedAllExamsRows.get(String(cadet.Kit_No))?.subjectCells[columnIndex]
+                          const rowKey = `${cadet.Section}\u0000${cadet.Kit_No}`;
+                          const cell = combinedAllExamsRows.get(rowKey)?.subjectCells[columnIndex]
                             || formatAggregateFraction(getSubjectTotal(cadet, column.subject));
                           const isError = ["MISSING", "INVALID", "CONFIGURATION_ERROR"].includes(cell.state);
                           return (
@@ -961,7 +1043,7 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
                       {/* Total */}
                       <td className="py-2.5 px-3 text-center font-extrabold text-slate-900 dark:text-white tabular-nums">
                         {isAllExams
-                          ? combinedAllExamsRows.get(String(cadet.Kit_No))?.grandTotal
+                          ? combinedAllExamsRows.get(`${cadet.Section}\u0000${cadet.Kit_No}`)?.grandTotal
                           : cadet.isFinal ? cadet.totalObtained : "-"}
                         {!isAllExams && cadet.isFinal && <span className="text-[10px] font-normal text-slate-400">/{cadet.totalMaxMarks}</span>}
                       </td>
@@ -969,7 +1051,7 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
                       {/* Aggregate % */}
                       <td className="py-2.5 px-3 text-center font-extrabold text-blue-700 dark:text-blue-400 tabular-nums">
                         {isAllExams
-                          ? combinedAllExamsRows.get(String(cadet.Kit_No))?.overallPercentage
+                          ? combinedAllExamsRows.get(`${cadet.Section}\u0000${cadet.Kit_No}`)?.overallPercentage
                           : cadet.isFinal ? `${cadet.aggregatePct}%` : "-"}
                       </td>
 
@@ -977,7 +1059,7 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
                       <td className="py-2.5 px-3 text-center font-bold">
                         <span className="px-1.5 py-0.5 rounded text-[10px] bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 font-extrabold">
                         {isAllExams
-                          ? combinedAllExamsRows.get(String(cadet.Kit_No))?.combinedGrade
+                          ? combinedAllExamsRows.get(`${cadet.Section}\u0000${cadet.Kit_No}`)?.combinedGrade
                           : cadet.letterGrade || "-"}
                         </span>
                       </td>
@@ -992,7 +1074,7 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
                           }`}
                         >
                         {isAllExams
-                          ? combinedAllExamsRows.get(String(cadet.Kit_No))?.resultStatus
+                          ? combinedAllExamsRows.get(`${cadet.Section}\u0000${cadet.Kit_No}`)?.resultStatus
                           : cadet.passStatus}
                         </span>
                       </td>
