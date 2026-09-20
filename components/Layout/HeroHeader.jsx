@@ -67,7 +67,7 @@ export default function HeroHeader() {
 
             <p className="text-xs sm:text-sm text-blue-100/90 leading-relaxed">
               {isAdmin ? (
-                "You have comprehensive access to enter examination marks, analyze class merit standings, and review question papers across all grades."
+                "You have comprehensive access to enter examination marks and analyze class merit standings across all grades."
               ) : assignedGrades.length > 0 ? (
                 `Your account is mapped to Grade ${assignedGrades.join(", ")}. Only your assigned classes and subjects are unlocked for marks entry.`
               ) : (

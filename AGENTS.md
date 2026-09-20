@@ -3,7 +3,7 @@
 ## Project Structure & Module Organization
 
 - `app/` contains the Next.js App Router UI and `app/api/*/route.js` endpoints.
-- `components/` groups React portals by feature: marks entry, analytics, reports, papers, authentication, and layout.
+- `components/` groups React portals by feature: marks entry, analytics, reports, authentication, and layout.
 - `lib/` contains Google Sheets access, RBAC, Zustand state, grading, analytics, and document generators.
 - `public/` serves web assets, including document fonts and institutional images. `docs/` contains plans and project guidance.
 - `tests/` contains Node.js tests. Next.js is the only supported application runtime.

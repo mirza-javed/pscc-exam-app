@@ -67,7 +67,7 @@ export async function GET(request) {
     }
     const [db, protectedRecords] = await Promise.all([
       loadMasterDatabase(forceRefresh),
-      loadFreshDatabaseTabs(["Students", "Marks_Log", "Question_Papers_Log"]),
+      loadFreshDatabaseTabs(["Students", "Marks_Log"]),
     ]);
     const authorizationDb = {
       ...db,

@@ -2,8 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   authorizeMarksBatch,
-  canReviewPaper,
-  canSubmitPaper,
   getStaffPermissions,
   shouldForceDatabaseRefresh,
 } from "../lib/authorization.mjs";
@@ -108,20 +106,7 @@ test("class teacher request is allowed for another subject only in own class", (
   );
 });
 
-test("paper submit request is allowed and denied by backend teaching scope", () => {
-  assert.equal(canSubmitPaper(permissions(), "9", "Physics"), true);
-  assert.equal(canSubmitPaper(permissions(), "9", "Chemistry"), false);
-});
-
-test("paper review request is denied to teachers and out-of-scope Section Heads", () => {
-  const physicsPaper = { Grade: "9", Subject: "Physics" };
-  const chemistryPaper = { Grade: "9", Subject: "Chemistry" };
-  assert.equal(canReviewPaper(permissions(), physicsPaper), false);
-  assert.equal(canReviewPaper(permissions("Section_Head"), physicsPaper), true);
-  assert.equal(canReviewPaper(permissions("Section_Head"), chemistryPaper), false);
-});
-
-test("examination administrator request can write any marks and review any paper", () => {
+test("examination administrator request can write any marks", () => {
   const examAdmin = permissions("Admin_Exam");
   assert.equal(
     authorizeMarksBatch(examAdmin, [
@@ -129,7 +114,6 @@ test("examination administrator request can write any marks and review any paper
     ], db).authorized,
     true
   );
-  assert.equal(canReviewPaper(examAdmin, { Grade: "12", Subject: "Biology" }), true);
 });
 
 test("refresh request is honored only for examination administrators", () => {

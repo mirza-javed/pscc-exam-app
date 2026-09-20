@@ -6,7 +6,7 @@
 **Design Standard:** UI/UX Pro Max (Design Intelligence Framework — WCAG 2.1 AA Compliant)  
 **Scope:** Architecture, UI/UX Design System, Feature Enhancements, Performance & Migration Strategy  
 
-> Historical note: this document records the migration rationale and target design. The migration is complete; Next.js is now the only supported application, and references to Python/Streamlit below describe the retired predecessor.
+> Historical note: this document records the migration rationale and target design. The migration is complete; Next.js is now the only supported application, and references to Python/Streamlit below describe the retired predecessor. It also preserves the historical design for the former Question Paper Submission and Academic Review module, which was subsequently removed and is no longer supported.
 
 ---
 

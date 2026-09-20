@@ -4,7 +4,6 @@ import test from "node:test";
 
 const writeRoutes = [
   "app/api/marks/route.js",
-  "app/api/question-papers/route.js",
   "app/api/result-publications/route.js",
 ];
 

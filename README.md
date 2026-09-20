@@ -1,6 +1,6 @@
 # Pakistan Steel Cadet College Examination Portal
 
-The PSCC Examination Portal is a mobile-first Next.js application for marks entry, academic analytics, cadet reports, and question-paper submission and review. Next.js is the repository's only supported application runtime.
+The PSCC Examination Portal is a mobile-first Next.js application for marks entry, academic analytics, and cadet reports. Next.js is the repository's only supported application runtime. The former Question Paper Submission and Academic Review module has been removed and is no longer supported.
 
 ## Technology
 
@@ -16,8 +16,6 @@ The PSCC Examination Portal is a mobile-first Next.js application for marks entr
 - Role-aware marks entry with maximum-mark and absence handling
 - Class, subject, and merit analytics
 - Individual result cards and batch reports
-- Structured question-paper creation with PDF and Word downloads
-- Academic review workflow for submitted papers
 - Urdu, Sindhi, and Arabic typography from `public/fonts/`
 
 ## Repository structure

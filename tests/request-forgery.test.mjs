@@ -19,7 +19,7 @@ test("same-origin validation accepts the exact production Vercel domain", () => 
 });
 
 test("same-origin validation accepts the active Vercel preview domain without a hostname allowlist", () => {
-  assert.equal(validateSameOrigin(request("https://pscc-exam-git-task-16-team.vercel.app/api/question-papers", {
+  assert.equal(validateSameOrigin(request("https://pscc-exam-git-task-16-team.vercel.app/api/marks", {
     origin: "https://pscc-exam-git-task-16-team.vercel.app",
   })).valid, true);
 });

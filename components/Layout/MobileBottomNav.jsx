@@ -1,13 +1,12 @@
 "use client";
 
-import { BarChart3, Edit3, Award, FileText } from "lucide-react";
+import { BarChart3, Edit3, Award } from "lucide-react";
 
 export default function MobileBottomNav({ activeTab, onTabChange }) {
   const navItems = [
     { id: "analytics", label: "Analytics", icon: BarChart3 },
     { id: "marks", label: "Marks Entry", icon: Edit3 },
     { id: "reports", label: "Result Cards", icon: Award },
-    { id: "papers", label: "Papers", icon: FileText },
   ];
 
   return (

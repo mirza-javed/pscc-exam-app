@@ -5,7 +5,6 @@ import {
   BarChart3, 
   Edit3, 
   Award, 
-  FileText, 
   Sparkles, 
   Users, 
   ShieldCheck, 
@@ -26,7 +25,6 @@ import MobileBottomNav from "@/components/Layout/MobileBottomNav";
 import MarksEntryPortal from "@/components/MarksEntry/MarksEntryPortal";
 import AnalyticsDashboard from "@/components/Analytics/AnalyticsDashboard";
 import CadetResultCards from "@/components/Reports/CadetResultCards";
-import QuestionPaperPortal from "@/components/Papers/QuestionPaperPortal";
 
 export default function Home() {
   const [dbData, setDbData] = useState(null);
@@ -143,7 +141,6 @@ export default function Home() {
     { id: "analytics", label: "📊 Examination Analytics", shortLabel: "Analytics", desc: "Class averages, rankings & distributions" },
     { id: "marks", label: "✍️ Marks Data Entry", shortLabel: "Marks Entry", desc: "Fast mobile grid & Excel bulk upload" },
     { id: "reports", label: "📋 Result Reports & Cards", shortLabel: "Result Cards", desc: "Printable cadet report cards" },
-    { id: "papers", label: "📝 Question Paper Submission", shortLabel: "Papers", desc: "Exam paper builder & approvals" },
   ];
 
   return (
@@ -188,8 +185,6 @@ export default function Home() {
             <MarksEntryPortal db={db} onMarksSaved={() => fetchDatabase(true)} />
           ) : activeTab === "reports" ? (
             <CadetResultCards db={db} onPublicationSaved={() => fetchDatabase(true)} />
-          ) : activeTab === "papers" ? (
-            <QuestionPaperPortal db={db} onSubmissionComplete={() => fetchDatabase(true)} />
           ) : null}
         </div>
       </main>

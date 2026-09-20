@@ -70,7 +70,7 @@ test("temporary limiter failures fail open without disabling normal authorizatio
   console.error = () => {};
   try {
     const result = await checkRateLimit({
-      policyName: "paperSubmit",
+      policyName: "marksWrite",
       identifierKind: "email",
       identifierValue: "teacher@example.test",
       context,
@@ -92,7 +92,5 @@ test("initial production defaults and environment overrides stay centralized", (
     message: "Too many sign-in attempts. Please try again later.",
   });
   assert.equal(getRateLimitPolicy("marksWrite", { RATE_LIMIT_MARKS_WRITE_MAX: "25" }).limit, 25);
-  assert.equal(getRateLimitPolicy("paperSubmit", {}).limit, 5);
-  assert.equal(getRateLimitPolicy("paperReview", {}).limit, 30);
   assert.equal(getRateLimitPolicy("databaseRefresh", {}).limit, 5);
 });
