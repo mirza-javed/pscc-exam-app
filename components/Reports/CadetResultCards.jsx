@@ -383,7 +383,7 @@ export default function CadetResultCards({ db = {}, onPublicationSaved }) {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 max-w-full space-y-6">
       {/* Toast Notification Banner */}
       {toastMessage && (
         <div
@@ -648,10 +648,10 @@ export default function CadetResultCards({ db = {}, onPublicationSaved }) {
 
       {/* Action Floating / Sticky Bar (Hidden in Print) */}
       {!empty && (
-        <div className="no-print bg-slate-900 text-white p-3.5 sm:p-4 rounded-2xl shadow-xl flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center space-x-2 text-xs text-blue-200">
-            <FileText className="w-4 h-4 text-amber-400" />
-            <span>
+        <div className="no-print bg-slate-900 text-white p-3.5 sm:p-4 rounded-2xl shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex min-w-0 w-full sm:flex-1 items-start sm:items-center gap-2 text-xs text-blue-200">
+            <FileText className="w-4 h-4 flex-shrink-0 text-amber-400" />
+            <span className="min-w-0 break-words">
               Target:{" "}
               <strong>
                 {viewMode === "single"
@@ -661,14 +661,14 @@ export default function CadetResultCards({ db = {}, onPublicationSaved }) {
             </span>
           </div>
 
-          <div className="flex items-center space-x-2 w-full sm:w-auto justify-end flex-wrap gap-2">
+          <div className="grid w-full grid-cols-1 gap-2 min-[360px]:grid-cols-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center sm:justify-end">
             {viewMode === "single" ? (
               <>
                 {canPublishResults && !currentCadet?.hasPriorOfficialPublication && (
                   <button
                     onClick={() => recordPublication("Draft")}
                     disabled={savingPublication || !currentCadet}
-                    className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-xl text-xs font-semibold disabled:opacity-50"
+                    className="inline-flex min-h-[44px] w-full items-center justify-center px-3 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-xl text-xs font-semibold disabled:opacity-50 sm:w-auto"
                   >
                     Save Draft
                   </button>
@@ -677,7 +677,7 @@ export default function CadetResultCards({ db = {}, onPublicationSaved }) {
                   <button
                     onClick={() => recordPublication("Published")}
                     disabled={savingPublication}
-                    className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold disabled:opacity-50"
+                    className="inline-flex min-h-[44px] w-full items-center justify-center px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold disabled:opacity-50 sm:w-auto"
                   >
                     Publish Result
                   </button>
@@ -686,7 +686,7 @@ export default function CadetResultCards({ db = {}, onPublicationSaved }) {
                   <button
                     onClick={() => recordPublication("Revised")}
                     disabled={savingPublication}
-                    className="px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold disabled:opacity-50"
+                    className="inline-flex min-h-[44px] w-full items-center justify-center px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold disabled:opacity-50 sm:w-auto"
                   >
                     Publish Revision
                   </button>
@@ -695,7 +695,7 @@ export default function CadetResultCards({ db = {}, onPublicationSaved }) {
                 <button
                   onClick={handleDownloadSinglePDF}
                   disabled={downloadingPdf || !currentCadet}
-                  className="px-4 py-2 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
+                  className="min-h-[44px] w-full px-4 py-2 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center justify-center gap-1.5 active:scale-95 disabled:opacity-50 sm:w-auto"
                   title="Download clean standalone PDF result card without charts"
                 >
                   <FileDown className="w-4 h-4" />
@@ -706,7 +706,7 @@ export default function CadetResultCards({ db = {}, onPublicationSaved }) {
                 <button
                   onClick={handleSendPDFViaWhatsApp}
                   disabled={sharingWhatsApp || !currentCadet}
-                  className="px-3.5 py-2 bg-[#25D366] hover:bg-[#20BD5A] text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-md active:scale-95 disabled:opacity-50"
+                  className="min-h-[44px] w-full px-3.5 py-2 bg-[#25D366] hover:bg-[#20BD5A] text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-md active:scale-95 disabled:opacity-50 sm:w-auto"
                   title="Send official PDF Result Card via WhatsApp"
                 >
                   <svg className="w-4 h-4 fill-current flex-shrink-0" viewBox="0 0 24 24">
@@ -718,7 +718,7 @@ export default function CadetResultCards({ db = {}, onPublicationSaved }) {
                 {/* 3. Excel Download */}
                 <button
                   onClick={exportSingleExcel}
-                  className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 border border-slate-700"
+                  className="min-h-[44px] w-full px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-1.5 border border-slate-700 sm:w-auto"
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>Excel (.xlsx)</span>
@@ -727,7 +727,7 @@ export default function CadetResultCards({ db = {}, onPublicationSaved }) {
                 {/* 4. Print */}
                 <button
                   onClick={handlePrint}
-                  className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-1.5 active:scale-95"
+                  className="min-h-[44px] w-full px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center justify-center gap-1.5 active:scale-95 sm:w-auto"
                 >
                   <Printer className="w-3.5 h-3.5" />
                   <span>Print</span>
@@ -739,7 +739,7 @@ export default function CadetResultCards({ db = {}, onPublicationSaved }) {
                 <button
                   onClick={handleDownloadBatchPDF}
                   disabled={downloadingPdf || meritGrid.length === 0}
-                  className="px-4 py-2 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
+                  className="min-h-[44px] w-full px-4 py-2 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center justify-center gap-1.5 active:scale-95 disabled:opacity-50 sm:w-auto"
                   title="Download all cadet result cards in one consolidated PDF dossier"
                 >
                   <FileDown className="w-4 h-4" />
@@ -748,7 +748,7 @@ export default function CadetResultCards({ db = {}, onPublicationSaved }) {
 
                 <button
                   onClick={handlePrint}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-1.5 active:scale-95"
+                  className="min-h-[44px] w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center justify-center gap-1.5 active:scale-95 sm:w-auto"
                 >
                   <Printer className="w-4 h-4" />
                   <span>Print All Cards</span>
@@ -838,20 +838,20 @@ function SingleCardView({
     : null;
 
   return (
-    <div className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl p-6 sm:p-8 max-w-4xl mx-auto space-y-6 print:border-none print:shadow-none print:p-0 print:m-0 print:text-black">
+    <div className="w-full min-w-0 max-w-4xl mx-auto bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl p-4 min-[375px]:p-5 sm:p-8 space-y-5 sm:space-y-6 print:border-none print:shadow-none print:p-0 print:m-0 print:text-black print:space-y-6">
       {/* Official Institutional Header */}
       <div className="text-center space-y-2 pb-4 border-b-2 border-slate-900 dark:border-slate-700 print:border-black">
-        <div className="flex items-center justify-center space-x-4">
+        <div className="flex flex-col items-center justify-center gap-3 min-[375px]:flex-row min-[375px]:gap-4 print:flex-row print:gap-4">
           <img
             src={PSCC_LOGO_DATA_URI}
             alt="Pakistan Steel Cadet College Karachi Logo"
-            className="w-16 h-16 object-contain rounded-full shadow-sm"
+            className="w-14 h-14 sm:w-16 sm:h-16 print:w-16 print:h-16 flex-shrink-0 object-contain rounded-full shadow-sm"
           />
-          <div className="text-left">
-            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 dark:text-white print:text-black uppercase">
+          <div className="min-w-0 text-center min-[375px]:text-left print:text-left">
+            <h1 className="text-lg sm:text-2xl font-black tracking-tight leading-tight text-slate-900 dark:text-white print:text-black uppercase break-words">
               PAKISTAN STEEL CADET COLLEGE KARACHI
             </h1>
-            <p className="text-xs font-bold text-slate-600 dark:text-slate-400 print:text-gray-700 uppercase tracking-wider">
+            <p className="text-[11px] sm:text-xs font-bold leading-relaxed text-slate-600 dark:text-slate-400 print:text-gray-700 uppercase tracking-wider break-words">
               Examination Department • Official Academic Evaluation Card
             </p>
           </div>
@@ -859,10 +859,10 @@ function SingleCardView({
       </div>
 
       {/* Cadet Demographics Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 print:bg-gray-50 print:border-gray-300 text-xs">
+      <div className="grid grid-cols-1 min-[360px]:grid-cols-2 sm:grid-cols-4 print:grid-cols-4 gap-3 p-3 sm:p-4 print:p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 print:bg-gray-50 print:border-gray-300 text-xs">
         <div className="min-w-0">
           <span className="text-slate-400 print:text-gray-500 font-medium">Cadet Name:</span>
-          <p className="font-extrabold text-sm text-slate-900 dark:text-white print:text-black truncate" title={cadet.Name}>
+          <p className="font-extrabold text-sm text-slate-900 dark:text-white print:text-black whitespace-normal break-words print:truncate" title={cadet.Name}>
             {cadet.Name}
           </p>
         </div>
@@ -874,20 +874,20 @@ function SingleCardView({
         </div>
         <div className="min-w-0">
           <span className="text-slate-400 print:text-gray-500 font-medium">Class / Section:</span>
-          <p className="font-bold text-slate-900 dark:text-white print:text-black truncate">
+          <p className="font-bold text-slate-900 dark:text-white print:text-black whitespace-normal break-words print:truncate">
             Grade {grade}-{section} ({cadet.Group || "General"})
           </p>
         </div>
         <div className="min-w-0">
           <span className="text-slate-400 print:text-gray-500 font-medium">Exam Name:</span>
-          <p className="font-bold text-slate-900 dark:text-white print:text-black truncate" title={exam}>
+          <p className="font-bold text-slate-900 dark:text-white print:text-black whitespace-normal break-words print:truncate" title={exam}>
             {exam}
           </p>
         </div>
       </div>
 
       {/* KPI Ribbons / Summary Metrics */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-3 text-center">
+      <div className="grid grid-cols-1 min-[340px]:grid-cols-2 sm:grid-cols-5 print:grid-cols-5 gap-2 sm:gap-3 text-center">
         {/* Total Marks */}
         <div className="p-3 rounded-xl bg-slate-100 dark:bg-slate-800 print:bg-gray-100 border border-slate-200 dark:border-slate-700 print:border-gray-300">
           <span className="text-[10px] uppercase font-bold text-slate-500 print:text-gray-600">Grand Total</span>
@@ -923,7 +923,7 @@ function SingleCardView({
         </div>
 
         {/* Result Status */}
-        <div className={`p-3 rounded-xl border col-span-2 sm:col-span-1 ${
+        <div className={`p-3 rounded-xl border col-span-1 min-[340px]:col-span-2 sm:col-span-1 print:col-span-1 ${
           isPass
             ? "bg-emerald-50 dark:bg-emerald-950/40 print:bg-emerald-50 border-emerald-200 dark:border-emerald-800 text-emerald-800"
             : "bg-rose-50 dark:bg-rose-950/40 print:bg-rose-50 border-rose-200 dark:border-rose-800 text-rose-800"
@@ -952,25 +952,25 @@ function SingleCardView({
 
       {/* Subject-Wise Detailed Score Breakdown Table */}
       {allExamsModel ? (
-        <div className="border border-slate-200 dark:border-slate-700 print:border-gray-400 rounded-xl overflow-x-auto shadow-sm">
-          <table className="w-full min-w-max text-left text-xs">
+        <div className="max-w-full border border-slate-200 dark:border-slate-700 print:border-gray-400 rounded-xl overflow-x-auto overscroll-x-contain print:overflow-x-auto shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 print:ring-0" role="region" aria-label="All exams subject results" tabIndex={0}>
+          <table className="w-full min-w-max print:min-w-max text-left text-xs">
             <thead>
               <tr className="bg-slate-100 dark:bg-slate-800 print:bg-gray-200 border-b border-slate-200 dark:border-slate-700 print:border-gray-400 font-bold text-slate-700 dark:text-slate-300 print:text-black uppercase">
-                <th className="py-2.5 px-4 min-w-[150px]">Subject</th>
+                <th className="py-2 px-2.5 sm:py-2.5 sm:px-4 print:py-2.5 print:px-4 min-w-[150px] whitespace-normal">Subject</th>
                 {allExamsModel.examColumns.map((column) => (
-                  <th key={column.key} className="py-2.5 px-4 text-center min-w-[130px]">{column.label}</th>
+                  <th key={column.key} className="py-2 px-2.5 sm:py-2.5 sm:px-4 print:py-2.5 print:px-4 text-center min-w-[130px] whitespace-normal">{column.label}</th>
                 ))}
-                <th className="py-2.5 px-4 text-center min-w-[110px]">Grand Total</th>
-                <th className="py-2.5 px-4 text-center min-w-[90px]">Overall %</th>
-                <th className="py-2.5 px-4 text-center min-w-[110px]">Overall Grade</th>
+                <th className="py-2 px-2.5 sm:py-2.5 sm:px-4 print:py-2.5 print:px-4 text-center min-w-[110px]">Grand Total</th>
+                <th className="py-2 px-2.5 sm:py-2.5 sm:px-4 print:py-2.5 print:px-4 text-center min-w-[90px]">Overall %</th>
+                <th className="py-2 px-2.5 sm:py-2.5 sm:px-4 print:py-2.5 print:px-4 text-center min-w-[110px]">Overall Grade</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 print:divide-gray-300 font-medium">
               {allExamsModel.rows.map((row) => (
                 <tr key={row.key}>
-                  <td className="py-2.5 px-4 font-bold text-slate-900 dark:text-white print:text-black">{row.subject}</td>
+                  <td className="py-2 px-2.5 sm:py-2.5 sm:px-4 print:py-2.5 print:px-4 font-bold text-slate-900 dark:text-white print:text-black whitespace-normal break-words">{row.subject}</td>
                   {row.examCells.map((cell) => (
-                    <td key={cell.examId} className={`py-2.5 px-4 text-center font-bold tabular-nums ${
+                    <td key={cell.examId} className={`py-2 px-2.5 sm:py-2.5 sm:px-4 print:py-2.5 print:px-4 text-center font-bold tabular-nums ${
                       ["MISSING", "INVALID", "DUPLICATE_CONFLICT", "CONFIGURATION_ERROR"].includes(cell.state)
                         ? "text-rose-600 dark:text-rose-400"
                         : cell.state === "ABSENT"
@@ -980,9 +980,9 @@ function SingleCardView({
                       {cell.display}
                     </td>
                   ))}
-                  <td className="py-2.5 px-4 text-center font-extrabold tabular-nums">{row.subjectTotal.display}</td>
-                  <td className="py-2.5 px-4 text-center"></td>
-                  <td className="py-2.5 px-4 text-center"></td>
+                  <td className="py-2 px-2.5 sm:py-2.5 sm:px-4 print:py-2.5 print:px-4 text-center font-extrabold tabular-nums">{row.subjectTotal.display}</td>
+                  <td className="py-2 px-2.5 sm:py-2.5 sm:px-4 print:py-2.5 print:px-4 text-center"></td>
+                  <td className="py-2 px-2.5 sm:py-2.5 sm:px-4 print:py-2.5 print:px-4 text-center"></td>
                 </tr>
               ))}
               <tr className="bg-slate-100/80 dark:bg-slate-800/80 font-bold border-t-2 border-slate-300 dark:border-slate-700 print:border-black text-slate-900 dark:text-white print:text-black">
@@ -998,18 +998,18 @@ function SingleCardView({
           </table>
         </div>
       ) : (
-      <div className="border border-slate-200 dark:border-slate-700 print:border-gray-400 rounded-xl overflow-hidden shadow-sm">
-        <table className="w-full text-left text-xs">
+      <div className="max-w-full border border-slate-200 dark:border-slate-700 print:border-gray-400 rounded-xl overflow-x-auto overscroll-x-contain lg:overflow-hidden print:overflow-hidden shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 print:ring-0" role="region" aria-label="Subject result details" tabIndex={0}>
+        <table className="w-full min-w-[720px] sm:min-w-full print:min-w-0 text-left text-xs">
           <thead>
             <tr className="bg-slate-100 dark:bg-slate-800 print:bg-gray-200 border-b border-slate-200 dark:border-slate-700 print:border-gray-400 font-bold text-slate-700 dark:text-slate-300 print:text-black uppercase">
-              <th className="py-2.5 px-4 w-12 text-center">#</th>
-              <th className="py-2.5 px-4">Exam</th>
-              <th className="py-2.5 px-4">Subject Name</th>
-              <th className="py-2.5 px-4 text-center w-24">Max Marks</th>
-              <th className="py-2.5 px-4 text-center w-28">Obtained</th>
-              <th className="py-2.5 px-4 text-center w-20">% Age</th>
-              <th className="py-2.5 px-4 text-center w-20">Grade</th>
-              <th className="py-2.5 px-4 text-left w-36">Faculty Remarks</th>
+              <th className="py-2 px-2 sm:py-2.5 sm:px-4 print:py-2.5 print:px-4 w-12 text-center">#</th>
+              <th className="py-2 px-2 sm:py-2.5 sm:px-4 print:py-2.5 print:px-4">Exam</th>
+              <th className="py-2 px-2 sm:py-2.5 sm:px-4 print:py-2.5 print:px-4">Subject Name</th>
+              <th className="py-2 px-2 sm:py-2.5 sm:px-4 print:py-2.5 print:px-4 text-center w-24">Max Marks</th>
+              <th className="py-2 px-2 sm:py-2.5 sm:px-4 print:py-2.5 print:px-4 text-center w-28">Obtained</th>
+              <th className="py-2 px-2 sm:py-2.5 sm:px-4 print:py-2.5 print:px-4 text-center w-20">% Age</th>
+              <th className="py-2 px-2 sm:py-2.5 sm:px-4 print:py-2.5 print:px-4 text-center w-20">Grade</th>
+              <th className="py-2 px-2 sm:py-2.5 sm:px-4 print:py-2.5 print:px-4 text-left w-36">Faculty Remarks</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800 print:divide-gray-300 font-medium">
@@ -1024,13 +1024,13 @@ function SingleCardView({
 
               return (
                 <tr key={column.key} className={isAbsent ? "bg-slate-50/50 dark:bg-slate-800/30 print:bg-gray-100" : ""}>
-                  <td className="py-2.5 px-4 text-center text-slate-400 font-mono">{i + 1}</td>
-                  <td className="py-2.5 px-4 font-semibold text-slate-600 dark:text-slate-300 print:text-black">{column.examName}</td>
-                  <td className="py-2.5 px-4 font-bold text-slate-900 dark:text-white print:text-black">{column.subject}</td>
-                  <td className="py-2.5 px-4 text-center text-slate-500 print:text-black tabular-nums">
+                  <td className="py-2 px-2 sm:py-2.5 sm:px-4 print:py-2.5 print:px-4 text-center text-slate-400 font-mono">{i + 1}</td>
+                  <td className="py-2 px-2 sm:py-2.5 sm:px-4 print:py-2.5 print:px-4 font-semibold text-slate-600 dark:text-slate-300 print:text-black whitespace-normal break-words">{column.examName}</td>
+                  <td className="py-2 px-2 sm:py-2.5 sm:px-4 print:py-2.5 print:px-4 font-bold text-slate-900 dark:text-white print:text-black whitespace-normal break-words">{column.subject}</td>
+                  <td className="py-2 px-2 sm:py-2.5 sm:px-4 print:py-2.5 print:px-4 text-center text-slate-500 print:text-black tabular-nums">
                     {presentation.maximum}
                   </td>
-                  <td className="py-2.5 px-4 text-center font-bold tabular-nums">
+                  <td className="py-2 px-2 sm:py-2.5 sm:px-4 print:py-2.5 print:px-4 text-center font-bold tabular-nums">
                     {isAbsent ? (
                       <span className="px-1.5 py-0.5 rounded text-[10px] bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 font-bold">
                         ABSENT
@@ -1043,17 +1043,17 @@ function SingleCardView({
                       presentation.obtained
                     )}
                   </td>
-                  <td className="py-2.5 px-4 text-center font-bold text-blue-700 dark:text-blue-400 print:text-black tabular-nums">
+                  <td className="py-2 px-2 sm:py-2.5 sm:px-4 print:py-2.5 print:px-4 text-center font-bold text-blue-700 dark:text-blue-400 print:text-black tabular-nums">
                     {hasScore ? `${pct}%` : isAbsent ? "AB" : "-"}
                   </td>
-                  <td className="py-2.5 px-4 text-center font-extrabold">
+                  <td className="py-2 px-2 sm:py-2.5 sm:px-4 print:py-2.5 print:px-4 text-center font-extrabold">
                     <span className={`px-1.5 py-0.5 rounded text-[10px] ${
                       isFail || isAbsent ? "text-rose-600 print:text-black" : "text-emerald-700 dark:text-emerald-400 print:text-black"
                     }`}>
                       {subGrade}
                     </span>
                   </td>
-                  <td className="py-2.5 px-4 text-slate-600 dark:text-slate-400 print:text-black text-[11px] truncate">
+                  <td className="py-2 px-2 sm:py-2.5 sm:px-4 print:py-2.5 print:px-4 text-slate-600 dark:text-slate-400 print:text-black text-[11px] whitespace-normal break-words">
                     {subRemarks}
                   </td>
                 </tr>
@@ -1089,7 +1089,7 @@ function SingleCardView({
       )}
 
       {/* Formal 3-Tier Signature Block */}
-      <div className="pt-8 grid grid-cols-3 gap-4 text-center text-xs text-slate-700 dark:text-slate-300 print:text-black">
+      <div className="pt-8 grid grid-cols-1 sm:grid-cols-3 print:grid-cols-3 gap-8 sm:gap-4 print:gap-4 text-center text-xs text-slate-700 dark:text-slate-300 print:text-black">
         <div className="space-y-6">
           <div className="border-b border-slate-400 dark:border-slate-600 print:border-black w-3/4 mx-auto" />
           <p className="font-bold text-[11px] uppercase tracking-wider">Class Teacher</p>

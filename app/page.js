@@ -144,7 +144,7 @@ export default function Home() {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 transition-colors duration-200 pb-20 sm:pb-8">
+    <div className="mobile-nav-content-offset min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 transition-colors duration-200">
       {/* Top Navbar */}
       <Navbar
         staffList={staffList}

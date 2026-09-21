@@ -67,6 +67,21 @@
   background: rgba(100, 116, 139, 0.5);
 }
 
+/* Keep fixed mobile navigation clear of device home indicators and page content. */
+.mobile-bottom-nav {
+  padding-bottom: calc(0.25rem + env(safe-area-inset-bottom, 0px));
+}
+
+.mobile-nav-content-offset {
+  padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
+}
+
+@media (min-width: 640px) {
+  .mobile-nav-content-offset {
+    padding-bottom: 2rem;
+  }
+}
+
 /* Print styling for official Cadet Result Cards */
 @media print {
   @page {
