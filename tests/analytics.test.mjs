@@ -58,6 +58,20 @@ test("ALL Sections recalculates one grade-wide ranking and keeps actual sections
 
   const analytics = buildClassAnalyticsData(db, "9", ALL_SECTIONS, "E1", "2026-27");
   assert.deepEqual(analytics.kpis.topPerformers.map((cadet) => cadet.Kit_No), ["100", "200", "300", "301"]);
+  assert.deepEqual(
+    analytics.kpis.topPerformers.map((cadet) => [cadet.Kit_No, cadet.Section, cadet.meritRank]),
+    [["100", "A", 1], ["200", "B", 2], ["300", "C", 3], ["301", "C", 3]]
+  );
+  assert.deepEqual(
+    buildClassAnalyticsData(db, "9", "C", "E1", "2026-27").kpis.topPerformers
+      .map((cadet) => [cadet.Kit_No, cadet.Section, cadet.meritRank]),
+    [["300", "C", 1], ["301", "C", 1]]
+  );
+  for (const section of ["A", "B", "C"]) {
+    const sectionAnalytics = buildClassAnalyticsData(db, "9", section, "E1", "2026-27");
+    assert.ok(sectionAnalytics.kpis.topPerformers.every((cadet) => cadet.Section === section));
+    assert.ok(sectionAnalytics.kpis.bottomPerformers.every((cadet) => cadet.Section === section));
+  }
 });
 
 test("attendance, incomplete subject contribution, and bottom ties follow the approved policies", () => {
@@ -89,6 +103,8 @@ test("attendance, incomplete subject contribution, and bottom ties follow the ap
     analytics.kpis.bottomPerformers.filter((cadet) => cadet.aggregatePct === 20).map((cadet) => cadet.Kit_No),
     ["400", "401"]
   );
+  assert.ok(analytics.kpis.bottomPerformers.every((cadet) => cadet.rankEligible));
+  assert.ok(analytics.kpis.bottomPerformers.every((cadet) => !["INCOMPLETE", "INVALID", "CONFIGURATION_ERROR"].includes(cadet.resultStatus)));
 
   const physics = analytics.subjectAverages.find((subject) => subject.subject === "Physics");
   assert.equal(physics.assessedStudents, 5);

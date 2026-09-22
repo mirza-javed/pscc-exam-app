@@ -44,6 +44,7 @@ import {
 } from "@/lib/examinationResults.mjs";
 import { buildCombinedAllExamsModel, formatAggregateFraction } from "@/lib/resultPresentation.mjs";
 import { downloadCombinedResultWorkbook } from "@/lib/excelResultGenerator.mjs";
+import CadetPhoto from "@/components/Common/CadetPhoto";
 
 // Custom data label renderer for Subject Average Performance Bar Chart
 const renderSubjectBarLabel = (props) => {
@@ -82,6 +83,42 @@ const renderGradeBarLabel = (props) => {
     </text>
   );
 };
+
+function PerformerCard({ cadet, variant = "top" }) {
+  const topTone = cadet.meritRank === 1
+    ? "border-amber-400 bg-amber-50/60 dark:border-amber-700 dark:bg-amber-950/30"
+    : cadet.meritRank === 2
+    ? "border-slate-300 bg-slate-50/70 dark:border-slate-700 dark:bg-slate-800/50"
+    : "border-orange-300 bg-orange-50/40 dark:border-orange-900/70 dark:bg-orange-950/20";
+  const tone = variant === "top"
+    ? topTone
+    : "border-blue-200 bg-blue-50/40 dark:border-blue-900/60 dark:bg-blue-950/20";
+
+  return (
+    <div className={`flex min-w-0 items-center gap-3 rounded-xl border p-3 ${tone}`}>
+      <CadetPhoto kitNo={cadet.Kit_No} name={cadet.Name} size="performer" loading="lazy" />
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 items-start justify-between gap-2">
+          <span className="inline-flex shrink-0 items-center rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-extrabold text-white dark:bg-slate-100 dark:text-slate-900">
+            Rank #{cadet.meritRank}
+          </span>
+          <span className="shrink-0 text-sm font-extrabold text-blue-700 tabular-nums dark:text-blue-300">
+            {cadet.aggregatePct}%
+          </span>
+        </div>
+        <p className="mt-1 break-words text-xs font-bold leading-snug text-slate-900 dark:text-white sm:text-sm">
+          {cadet.Name}
+        </p>
+        <p className="mt-0.5 break-words text-[11px] text-slate-600 dark:text-slate-400">
+          Kit #{cadet.Kit_No} • Section {cadet.Section || "-"}
+        </p>
+        <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-600 dark:text-slate-300">
+          Grade {cadet.letterGrade || "-"} • {cadet.passStatus || cadet.resultStatus || "-"}
+        </p>
+      </div>
+    </div>
+  );
+}
 
 export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
   // Result calculations are driven only by configured exam schemes.
@@ -245,8 +282,8 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
   };
 
   // Export Merit Sheet as PDF (Legal Paper, Horizontal / Landscape)
-  const handleDownloadPDF = () => {
-    downloadMeritMasterSheetPDF({
+  const handleDownloadPDF = async () => {
+    await downloadMeritMasterSheetPDF({
       meritGrid,
       grade: selectedGrade,
       section: selectedSection,
@@ -688,47 +725,18 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
               <div className="flex items-center space-x-2">
                 <Award className="w-5 h-5 text-amber-500" />
                 <h3 className="font-bold text-sm text-slate-900 dark:text-white">
-                  Top Merit Cadets ({isAllSections ? "Grade/Class Standings" : "Section Standings"})
+                  Top Performers ({isAllSections ? "Grade/Class Standings" : "Section Standings"})
                 </h3>
               </div>
 
               <div className="space-y-2">
-                {kpis.topPerformers.map((cadet) => {
-                  const borderGradients = [
-                    "border-amber-400 dark:border-amber-600 bg-amber-50/50 dark:bg-amber-950/30",
-                    "border-slate-300 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40",
-                    "border-amber-600/60 dark:border-amber-700/60 bg-amber-50/20 dark:bg-amber-950/20",
-                  ];
-                  return (
-                    <div
-                      key={`${cadet.Section}-${cadet.Kit_No}`}
-                      className={`p-3 rounded-xl border ${borderGradients[cadet.meritRank - 1] || "border-slate-200"} flex items-center justify-between gap-3`}
-                    >
-                      <div className="flex items-center space-x-3">
-                        <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-extrabold text-white dark:bg-slate-100 dark:text-slate-900">
-                          #{cadet.meritRank}
-                        </span>
-                        <div>
-                          <div className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">
-                            {cadet.Name}
-                          </div>
-                          <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                            Kit #{cadet.Kit_No} • {isAllSections ? `Section ${cadet.Section} • ` : ""}{cadet.Group}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="text-right">
-                        <div className="text-xs sm:text-sm font-extrabold text-blue-700 dark:text-blue-400 tabular-nums">
-                          {cadet.aggregatePct}%
-                        </div>
-                        <div className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase">
-                          Grade {cadet.letterGrade} ({cadet.totalObtained}/{cadet.totalMaxMarks})
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+                {kpis.topPerformers.map((cadet) => (
+                  <PerformerCard
+                    key={`${cadet.Section}-${cadet.Kit_No}`}
+                    cadet={cadet}
+                    variant="top"
+                  />
+                ))}
               </div>
             </div>
 
@@ -741,25 +749,11 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
               </div>
               <div className="space-y-2">
                 {kpis.bottomPerformers.map((cadet) => (
-                  <div
+                  <PerformerCard
                     key={`${cadet.Section}-${cadet.Kit_No}`}
-                    className="p-3 rounded-xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/40 dark:bg-blue-950/20 flex items-center justify-between gap-3"
-                  >
-                    <div>
-                      <div className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">
-                        {cadet.Name}
-                      </div>
-                      <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                        Bottom #{cadet.bottomRank} • Kit #{cadet.Kit_No}{isAllSections ? ` • Section ${cadet.Section}` : ""}
-                      </div>
-                    </div>
-                    <div className="text-right text-xs font-extrabold text-blue-700 dark:text-blue-300 tabular-nums">
-                      {cadet.aggregatePct}%
-                      <div className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
-                        {cadet.totalObtained}/{cadet.totalMaxMarks}
-                      </div>
-                    </div>
-                  </div>
+                    cadet={cadet}
+                    variant="bottom"
+                  />
                 ))}
               </div>
             </div>

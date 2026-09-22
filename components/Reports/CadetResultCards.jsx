@@ -27,6 +27,7 @@ import { ALL_EXAMS, getAcademicSession, getAssessment } from "@/lib/examinationR
 import { useAuthStore } from "@/lib/store";
 import { buildIndividualAllExamsModel, formatAssessment } from "@/lib/resultPresentation.mjs";
 import { downloadIndividualResultWorkbook } from "@/lib/excelResultGenerator.mjs";
+import CadetPhoto from "@/components/Common/CadetPhoto";
 import {
   downloadCadetResultCardPDF,
   downloadBatchResultCardsPDF,
@@ -193,11 +194,11 @@ export default function CadetResultCards({ db = {}, onPublicationSaved }) {
   };
 
   // Trigger Instant Single Cadet PDF Download
-  const handleDownloadSinglePDF = () => {
+  const handleDownloadSinglePDF = async () => {
     if (!currentCadet) return;
     try {
       setDownloadingPdf(true);
-      downloadCadetResultCardPDF({
+      await downloadCadetResultCardPDF({
         cadet: currentCadet,
         grade: selectedGrade,
         section: selectedSection,
@@ -217,11 +218,11 @@ export default function CadetResultCards({ db = {}, onPublicationSaved }) {
   };
 
   // Trigger Instant Batch Section Dossier PDF Download
-  const handleDownloadBatchPDF = () => {
+  const handleDownloadBatchPDF = async () => {
     if (!meritGrid || meritGrid.length === 0) return;
     try {
       setDownloadingPdf(true);
-      downloadBatchResultCardsPDF({
+      await downloadBatchResultCardsPDF({
         meritGrid,
         grade: selectedGrade,
         section: selectedSection,
@@ -240,8 +241,18 @@ export default function CadetResultCards({ db = {}, onPublicationSaved }) {
   };
 
   // Trigger Native Print Dialog (Prints only the result cards due to @media print rules)
-  const handlePrint = () => {
+  const handlePrint = async () => {
     if (typeof window !== "undefined") {
+      const cadetPhotos = Array.from(document.querySelectorAll("img[data-cadet-photo='true']"));
+      await Promise.all(cadetPhotos.map((photo) => {
+        photo.loading = "eager";
+        if (photo.complete) return Promise.resolve();
+        return new Promise((resolve) => {
+          photo.addEventListener("load", resolve, { once: true });
+          photo.addEventListener("error", resolve, { once: true });
+          window.setTimeout(resolve, 2000);
+        });
+      }));
       window.print();
     }
   };
@@ -257,7 +268,7 @@ export default function CadetResultCards({ db = {}, onPublicationSaved }) {
       const safeName = String(currentCadet.Name || "Cadet").replace(/[^a-zA-Z0-9]/g, "_");
       const fileName = `PSCC_Result_Card_${currentCadet.Kit_No}_${safeName}.pdf`;
 
-      const blob = generateCadetResultCardPDFBlob({
+      const blob = await generateCadetResultCardPDFBlob({
         cadet: currentCadet,
         grade: selectedGrade,
         section: selectedSection,
@@ -296,7 +307,7 @@ export default function CadetResultCards({ db = {}, onPublicationSaved }) {
       // Browser protocols cannot auto-attach local files into WhatsApp Web.
       // Automatically download the official PDF and open WhatsApp Web with pre-formatted academic summary.
       if (!sharedDirectly) {
-        downloadCadetResultCardPDF({
+        await downloadCadetResultCardPDF({
           cadet: currentCadet,
           grade: selectedGrade,
           section: selectedSection,
@@ -787,6 +798,7 @@ export default function CadetResultCards({ db = {}, onPublicationSaved }) {
                   examColumns={examColumns}
                   subjectColumns={subjectColumns}
                   totalCadets={meritGrid.length}
+                  photoLoading="lazy"
                 />
               </div>
             ))
@@ -803,6 +815,7 @@ export default function CadetResultCards({ db = {}, onPublicationSaved }) {
                 examColumns={examColumns}
                 subjectColumns={subjectColumns}
                 totalCadets={meritGrid.length}
+                photoLoading="eager"
               />
             )
           )}
@@ -826,6 +839,7 @@ function SingleCardView({
   examColumns,
   subjectColumns,
   totalCadets,
+  photoLoading = "lazy",
 }) {
   if (!cadet) return null;
 
@@ -858,31 +872,40 @@ function SingleCardView({
         </div>
       </div>
 
-      {/* Cadet Demographics Grid */}
-      <div className="grid grid-cols-1 min-[360px]:grid-cols-2 sm:grid-cols-4 print:grid-cols-4 gap-3 p-3 sm:p-4 print:p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 print:bg-gray-50 print:border-gray-300 text-xs">
-        <div className="min-w-0">
-          <span className="text-slate-400 print:text-gray-500 font-medium">Cadet Name:</span>
-          <p className="font-extrabold text-sm text-slate-900 dark:text-white print:text-black whitespace-normal break-words print:truncate" title={cadet.Name}>
-            {cadet.Name}
-          </p>
-        </div>
-        <div className="min-w-0">
-          <span className="text-slate-400 print:text-gray-500 font-medium">Kit No:</span>
-          <p className="font-extrabold text-sm text-slate-900 dark:text-white print:text-black font-mono">
-            {cadet.Kit_No}
-          </p>
-        </div>
-        <div className="min-w-0">
-          <span className="text-slate-400 print:text-gray-500 font-medium">Class / Section:</span>
-          <p className="font-bold text-slate-900 dark:text-white print:text-black whitespace-normal break-words print:truncate">
-            Grade {grade}-{section} ({cadet.Group || "General"})
-          </p>
-        </div>
-        <div className="min-w-0">
-          <span className="text-slate-400 print:text-gray-500 font-medium">Exam Name:</span>
-          <p className="font-bold text-slate-900 dark:text-white print:text-black whitespace-normal break-words print:truncate" title={exam}>
-            {exam}
-          </p>
+      {/* Cadet Demographics and Passport Photo */}
+      <div className="flex min-w-0 flex-col items-center gap-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs dark:border-slate-700 dark:bg-slate-800/50 min-[360px]:flex-row min-[360px]:items-stretch sm:p-4 print:flex-row print:items-stretch print:border-gray-300 print:bg-gray-50 print:p-4">
+        <CadetPhoto
+          kitNo={cadet.Kit_No}
+          name={cadet.Name}
+          size="result"
+          loading={photoLoading}
+          className="self-center print:self-start"
+        />
+        <div className="grid min-w-0 flex-1 grid-cols-1 gap-3 min-[360px]:grid-cols-2 sm:grid-cols-4 print:grid-cols-4">
+          <div className="min-w-0">
+            <span className="font-medium text-slate-500 print:text-gray-600">Cadet Name:</span>
+            <p className="whitespace-normal break-words text-sm font-extrabold text-slate-900 dark:text-white print:text-black" title={cadet.Name}>
+              {cadet.Name}
+            </p>
+          </div>
+          <div className="min-w-0">
+            <span className="font-medium text-slate-500 print:text-gray-600">Kit No:</span>
+            <p className="font-mono text-sm font-extrabold text-slate-900 dark:text-white print:text-black">
+              {cadet.Kit_No}
+            </p>
+          </div>
+          <div className="min-w-0">
+            <span className="font-medium text-slate-500 print:text-gray-600">Class / Section:</span>
+            <p className="whitespace-normal break-words font-bold text-slate-900 dark:text-white print:text-black">
+              Grade {grade}-{cadet.Section || section} ({cadet.Group || "General"})
+            </p>
+          </div>
+          <div className="min-w-0">
+            <span className="font-medium text-slate-500 print:text-gray-600">Exam Name:</span>
+            <p className="whitespace-normal break-words font-bold text-slate-900 dark:text-white print:text-black" title={exam}>
+              {exam}
+            </p>
+          </div>
         </div>
       </div>
 

@@ -1,8 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import { jsPDF } from "jspdf";
 import { ALL_EXAMS, ALL_SECTIONS, resolveClassResults } from "../lib/examinationResults.mjs";
-import { buildMeritMasterSheetTableModel, renderCadetResultCardToDoc } from "../lib/pdfGenerator.js";
+import {
+  buildMeritMasterSheetTableModel,
+  renderCadetResultCardToDoc,
+  renderPerformerSummaryToDoc,
+} from "../lib/pdfGenerator.js";
 
 test("individual All Exams PDF renders the shared matrix model", () => {
   const db = {
@@ -64,4 +69,66 @@ test("ALL Sections PDF table model preserves the full cohort, actual sections, a
     ["#2", "300", "Cadet C", "C"],
     ["#3", "100", "Cadet A", "A"],
   ]);
+});
+
+test("individual result PDF embeds a supplied cadet photo without changing result values", () => {
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const imageFormats = [];
+  const originalAddImage = doc.addImage.bind(doc);
+  doc.addImage = (...args) => {
+    imageFormats.push(args[1]);
+    return originalAddImage(...args);
+  };
+  const cadet = {
+    Kit_No: "26002",
+    Name: "Photo Cadet",
+    Section: "A",
+    Group: "General",
+    isFinal: true,
+    isPassed: true,
+    passStatus: "PASS",
+    totalObtained: 80,
+    totalMaxMarks: 100,
+    aggregatePct: 80,
+    letterGrade: "A",
+    meritRank: 1,
+    exams: [],
+    scores: {},
+  };
+  renderCadetResultCardToDoc(doc, {
+    cadet,
+    grade: "9",
+    section: "A",
+    exam: "E1",
+    totalCadets: 1,
+    cadetPhotoDataUri: `data:image/webp;base64,${readFileSync(new URL("../public/cadet-photos/26002.webp", import.meta.url)).toString("base64")}`,
+  });
+  assert.ok(imageFormats.includes("WEBP"));
+  assert.equal(cadet.totalObtained, 80);
+  assert.equal(cadet.aggregatePct, 80);
+});
+
+test("analytics PDF performer summary includes a dedicated page and tolerates missing photos", () => {
+  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "legal" });
+  const performer = {
+    Kit_No: "26002",
+    Name: "Summary Cadet",
+    Section: "B",
+    meritRank: 1,
+    aggregatePct: 91.6,
+    totalObtained: 916,
+    totalMaxMarks: 1000,
+    letterGrade: "A+",
+    passStatus: "PASS",
+  };
+  renderPerformerSummaryToDoc(doc, {
+    topPerformers: [performer],
+    bottomPerformers: [{ ...performer, Kit_No: "26003", meritRank: 20, aggregatePct: 42 }],
+    grade: "10",
+    section: ALL_SECTIONS,
+    exam: "E1",
+    academicSession: "2026-27",
+  });
+  assert.equal(doc.internal.getNumberOfPages(), 2);
+  assert.ok(doc.output("arraybuffer").byteLength > 1000);
 });
