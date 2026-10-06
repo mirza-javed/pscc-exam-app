@@ -28,12 +28,12 @@ import {
 } from "@/lib/models";
 import { calculateGradeInfo } from "@/lib/grading";
 
-const LEGACY_ABSENT_VALUES = new Set(["ab", "a", "absent", "a/b", "n/a", "na", "-"]);
+import { isLegacyAbsent } from "@/lib/domain/markValues.mjs";
 const STRICT_MARKS_PATTERN = /^\d+(?:\.\d+)?$/;
 
 function canonicalizeStoredMark(value) {
   const text = String(value ?? "").trim();
-  return LEGACY_ABSENT_VALUES.has(text.toLowerCase()) ? "Absent" : text;
+  return isLegacyAbsent(text) ? "Absent" : text;
 }
 
 function isExplicitAbsentValue(value) {

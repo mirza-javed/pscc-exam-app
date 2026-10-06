@@ -1,0 +1,40 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { readFileSync } from "node:fs";
+import { normalizeValue as legacyNormalize } from "../lib/authorization.mjs";
+import { normalizeValue, normalizeWriteKey, getAcademicSession } from "../lib/domain/identifiers.mjs";
+import { normalizeMarkValue, MARK_STATES, ABSENCE_VALUES } from "../lib/domain/markValues.mjs";
+import { RESULT_STATES } from "../lib/domain/resultStates.mjs";
+import { PUBLICATION_STATUSES, fingerprintResult, buildResultKey } from "../lib/domain/publications.mjs";
+import * as legacyResults from "../lib/examinationResults.mjs";
+import { matchesScheme } from "../lib/domain/schemeMatching.mjs";
+import { compareRankedResults, sharesRank } from "../lib/domain/ranking.mjs";
+import * as contracts from "../lib/contracts.mjs";
+test("compatibility exports retain the shared implementations", () => {
+  assert.equal(legacyNormalize, normalizeValue);
+  assert.equal(legacyResults.normalizeMarkValue, normalizeMarkValue);
+  assert.equal(legacyResults.ABSENCE_VALUES, ABSENCE_VALUES);
+  assert.equal(legacyResults.getAcademicSession, getAcademicSession);
+  assert.equal(legacyResults.fingerprintResult, fingerprintResult);
+  assert.equal(legacyResults.buildResultKey, buildResultKey);
+  assert.equal(normalizeValue("\uFF25  1"), "e 1");
+  assert.equal(normalizeWriteKey("\uFF25  1"), "e  1");
+});
+test("academic and publication vocabulary and matching remain separate", () => {
+  assert.equal(RESULT_STATES.PASS, "PASS");
+  assert.equal(MARK_STATES.PRESENT, "PRESENT");
+  assert.equal(PUBLICATION_STATUSES.PUBLISHED, "Published");
+  assert.ok(!Object.values(RESULT_STATES).includes(PUBLICATION_STATUSES.PUBLISHED));
+  assert.equal(matchesScheme({ Exam_ID: "\uFF25  1", Grade: "\uFF19", Subject: " English " }, "e 1", "9", "english"), true);
+  const first = { aggregatePct: 80, totalObtained: 160, Kit_No: "001" };
+  const second = { ...first, Kit_No: "002" };
+  assert.equal(sharesRank(first, second), true);
+  assert.ok(compareRankedResults(first, second) < 0);
+  assert.ok(compareRankedResults(first, { ...second, totalObtained: 150 }) < 0);
+  assert.ok(compareRankedResults(first, { ...second, totalObtained: 150 }, true) > 0);
+});
+test("contracts remain documentation-only and cover public and academic shapes", () => {
+  assert.deepEqual(Object.keys(contracts), []);
+  const source = readFileSync(new URL("../lib/contracts.mjs", import.meta.url), "utf8");
+  for (const name of ["Student", "MarksRecord", "ExamSchemeRow", "StaffRecord", "AssignmentRecord", "ResolvedStudentResult", "AnalyticsResult", "MarksSubmissionRequest", "MarksSaveReceipt", "PublicationEvent", "ApiErrorResponse", "IndividualAllExamsModel", "DatabaseResponse"]) assert.ok(source.includes(name));
+});
