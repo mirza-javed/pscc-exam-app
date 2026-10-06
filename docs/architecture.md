@@ -1,6 +1,6 @@
 # Current application architecture
 
-Task 2.1 baseline, verified against the repository on 2026-10-06.
+Task 2.2 service/repository separation, verified locally on 2026-10-06.
 
 ## Runtime and ownership
 
@@ -15,13 +15,20 @@ Next.js 14 with React 18 and the App Router is the sole supported application ru
 | Authorization | `lib/authorization.mjs`, re-exported by `lib/rbac.js`: role capabilities, class/subject scopes, database projection, and marks target ownership |
 | HTTP boundary | `app/api/staff-session/route.js`, `app/api/database/route.js`, `app/api/marks/route.js`, `app/api/result-publications/route.js`: session, reads, marks writes, and publication workflows |
 | HTTP security | `lib/requestForgery.mjs`, `lib/requestBody.mjs`, `lib/rateLimit.mjs`, `lib/requestContext.mjs`, `lib/apiErrors.mjs`: origin checks, bounded parsing, rate limits, request IDs/logging, and safe responses |
-| Persistence | `lib/googleSheets.js`: service-account clients, workbook discovery, row parsing, reads, cache, marks batch planning, and publication appends |
+| Services | `lib/services/academicDataService.mjs`, `marksService.mjs`, `resultPublicationService.mjs`: academic projection/preview, authorized marks validation/save, and publication workflows |
+| Persistence | `lib/repositories/`: service-account clients/discovery, academic reads/cache, marks atomic batch writes, publication safeguards/appends, and row parsing; `lib/googleSheets.js` remains a compatibility facade |
 | Academic rules | `lib/examinationResults.mjs`, `lib/grading.js`, `lib/academicRules.mjs`: authoritative results, grading, and subject applicability; `lib/marksValidation.mjs` validates submissions |
 | Presentation | `lib/analytics.js`, `lib/resultPresentation.mjs`: analytics and shared result models; `lib/models.js` supplies model helpers |
 | Documents | `lib/pdfGenerator.js`, `lib/excelResultGenerator.mjs`: PDF and Excel result generation; `lib/cadetPhotos.js` and `lib/logo.js` supply visual assets |
 | Browser state | `lib/store.js`: transient staff/permissions/preview and persisted theme; feature components own filters, drafts, and action progress |
 
-Routes currently coordinate security, domain logic, and Sheets access directly. Separate service/repository layers are proposed Task 2.2 work, not implemented architecture.
+Routes retain HTTP/security controls and fresh session/approval lookup, then invoke services with the server-resolved staff context. Services coordinate business workflows through repositories. Services also reject absent or disallowed staff contexts defensively; browser-supplied staff or permissions must never be passed as that context.
+
+```text
+API route -> service -> repository -> Google Sheets
+```
+
+Service factories accept repository dependencies for synthetic executable tests. Production uses the existing implementations by default. ServiceError carries expected status/code/details to the route; the route owns logging and HTTP response mapping. Unexpected storage failures retain safe public responses. Auth.js and staff-session routing remain separate.
 
 ## Data flow and integration
 
@@ -34,7 +41,7 @@ Marks submission -> origin/session/scope checks -> validation -> Sheets batch
 Publication action -> authorized calculation/transition checks -> event append
 ```
 
-`lib/googleSheets.js` authenticates server-side with a Google service account. It uses `GOOGLE_SHEET_ID` when provided, otherwise discovers the workbook by `GOOGLE_SHEET_TITLE` through Drive. Sheets and Drive clients remain server responsibilities; credentials must never enter browser state or exports.
+`lib/repositories/googleSheetsClient.js` authenticates server-side with a Google service account. It uses `GOOGLE_SHEET_ID` when provided, otherwise discovers the workbook by `GOOGLE_SHEET_TITLE` through Drive. Sheets and Drive clients remain server responsibilities; credentials must never enter browser state or exports.
 
 The master read targets `Students`, `Staff_Directory`, `Teaching_Assignments`, `Grading_System`, `exam_scheme`, `Marks_Log`, `Group_Subjects`, `Subjects_Master`, and `Result_Publications`. Headers become application row keys with compatibility aliases; preserve external names such as `Kit_No` and `Exam_ID`. Missing optional tabs become empty arrays in the master read, which does not imply valid academic configuration.
 
@@ -57,7 +64,7 @@ Assigned teachers may read class/section marks for overall analytics; subject-te
 
 Mutation routes check same origin, rate limits, fresh authorization, and bounded JSON. Marks scope checks precede detailed validation when target records can be constructed. `lib/writeValidation.mjs` supplies storage validation helpers. Upstash supports shared production rate limiting; missing production configuration fails closed. Temporary limiter service failures fail open while normal authentication and authorization still apply.
 
-`lib/staffAuth.js` imports `server-only`. `lib/googleSheets.js` currently has no explicit guard; keep it out of client imports. `auth.js` imports staff approval while `staffAuth.js` dynamically imports `auth.js` for session lookup. Preserve that runtime dependency when considering later extraction.
+`lib/staffAuth.js`, the storage facade, credential/storage repositories, and services import `server-only`, so Next.js rejects imports through client components. Pure row utilities contain no credentials or SDK access. Node tests initialize `tests/helpers/serverImports.mjs` before dynamically importing guarded modules; this test-only adapter resolves the compile-time marker and app aliases and allows explicit synthetic module mocks. It uses Node module registration hooks (available in Node 18.19+/20.6+, verified with Node 24.16.0); the application runtime and dependencies are unchanged. `auth.js` imports staff approval while `staffAuth.js` dynamically imports `auth.js` for session lookup. Preserve that runtime dependency when considering later extraction.
 
 ## Result calculation and exports
 

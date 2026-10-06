@@ -1,10 +1,11 @@
+import "./helpers/serverImports.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
+const {
   appendResultPublicationEvent,
   RESULT_PUBLICATION_HEADERS,
   SheetWriteError,
-} from "../lib/googleSheets.js";
+} = await import("../lib/googleSheets.js");
 
 function event(overrides = {}) {
   return {
@@ -67,4 +68,27 @@ test("publication storage fails closed on schema errors and conflicting event ID
     (error) => error instanceof SheetWriteError && error.code === "PUBLICATION_EVENT_CONFLICT"
   );
   assert.equal(conflict.calls.length, 0);
+});
+
+
+test("publication repository preserves event idempotency and defensive transitions", async () => {
+  const published = event();
+  const stored = RESULT_PUBLICATION_HEADERS.map((header) => published[header]);
+  const identical = fixture([RESULT_PUBLICATION_HEADERS, stored]);
+  assert.deepEqual(await appendResultPublicationEvent(published, identical), { inserted: false, idempotent: true });
+  assert.equal(identical.calls.length, 0);
+  for (const candidate of [
+    event({ Publication_Event_ID: "RPE-2", Result_Status: "Draft" }),
+    event({ Publication_Event_ID: "RPE-2", Result_Status: "Published", Calculation_Fingerprint: "changed" }),
+    event({ Publication_Event_ID: "RPE-2", Result_Status: "Revised", Prior_Event_ID: "missing", Revision_Reason: "Correction" }),
+    event({ Publication_Event_ID: "RPE-2", Result_Status: "Revised", Prior_Event_ID: "RPE-1", Revision_Reason: "Correction" }),
+  ]) {
+    const target = fixture([RESULT_PUBLICATION_HEADERS, stored]);
+    await assert.rejects(appendResultPublicationEvent(candidate, target), (error) => error instanceof SheetWriteError);
+    assert.equal(target.calls.length, 0);
+  }
+  const revision = fixture([RESULT_PUBLICATION_HEADERS, stored]);
+  await appendResultPublicationEvent(event({ Publication_Event_ID: "RPE-2", Result_Status: "Revised", Prior_Event_ID: "RPE-1", Revision_Reason: "=synthetic", Calculation_Fingerprint: "changed" }), revision);
+  assert.equal(revision.calls[0].valueInputOption, "RAW");
+  assert.equal(revision.calls[0].requestBody.values[0][14], "=synthetic");
 });
