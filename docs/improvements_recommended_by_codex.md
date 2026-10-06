@@ -34,11 +34,13 @@ Observed findings include identifier-only login, API handlers without server-sid
 
 ## Phase 2 - Code quality and architecture
 
+Task 2.1 documentation is complete as of 2026-10-06, pending user review and commit approval. Tasks 2.2, 2.3, and 2.4 have not started and require separate approval.
+
 The repository contains large portal components and storage logic coupled to normalization and write behavior. Refactoring should preserve the security fixes from Phase 1.
 
 | Recommended implementation order | Task | Priority | Files affected | Estimated complexity | Dependencies | Risk level |
 |---|---|---|---|---|---|---|
-| 2.1 | **Completed 2026-09-15:** Next.js was designated the single supported runtime and the obsolete Python/Streamlit implementation was removed. | P1 | `README.md`, `AGENTS.md` | Small | Product/maintenance ownership decision | Low |
+| 2.1 | **Completed 2026-10-06:** Architecture ownership and documentation verified; README corrected for Google authentication, RBAC, marks, analytics, cards, and PDF/Excel exports; architecture and deployment guides added. Runtime retirement completed 2026-09-15 remains preserved. | P1 | `README.md`, `docs/architecture.md`, `docs/deployment.md`, session summary, Phase 2 audit/roadmap | Small | Documentation only; no runtime, dependency, deployment-command, or Sheets changes | Low |
 | 2.2 | Separate API handlers, business services, and Sheets access. Keep authorization and validation explicit at server boundaries and prevent server-only credential/storage code from entering client bundles. | P1 | `app/api/*/route.js`, `lib/googleSheets.js`, `lib/services/` (new), `lib/repositories/` (new) | Large | Phase 1; 2.1 | Medium |
 | 2.3 | Centralize identifiers, absence normalization, exam resolution, grading rules, and data contracts. Introduce types incrementally at these boundaries. | P1 | `lib/models.js`, `lib/grading.js`, `lib/analytics.js`, `lib/rbac.js`, `lib/schemas/` (new) | Large | 1.5; 2.2 | High |
 | 2.4 | Split large portals into focused forms, tables, hooks, and export actions. Separate session state, server data, preferences, and drafts. Establish linting and formatting and remove verified unused code as part of the refactor. | P2 | `components/MarksEntry/MarksEntryPortal.jsx`, `components/Reports/CadetResultCards.jsx`, `lib/store.js`, `package.json`, lint configuration (new) | Large | 2.2-2.3 | Medium |

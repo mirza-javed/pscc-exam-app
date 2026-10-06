@@ -9,13 +9,15 @@ The PSCC Examination Portal is a mobile-first Next.js application for marks entr
 - Google Sheets API for institutional data
 - Auth.js with Google Sign-In
 - Vercel deployment configuration
-- Browser-side PDF, Word, and Excel export tooling
+- Browser-side PDF and Excel export tooling (Word exports are not supported)
 
 ## Main features
 
-- Role-aware marks entry with maximum-mark and absence handling
-- Class, subject, and merit analytics
-- Individual result cards and batch reports
+- Google Sign-In for uniquely approved, active staff and server-enforced role-based access control (RBAC)
+- Scoped marks entry, Excel import/templates, maximum-mark validation, and absence handling
+- Class, subject, and merit analytics for single exams and session-scoped All Exams
+- Individual result cards, batch PDF cards, merit-sheet PDFs, and individual/combined Excel results
+- Explicit Draft, Published, and Revised result-publication history
 - Urdu, Sindhi, and Arabic typography from `public/fonts/`
 
 ## Repository structure
@@ -31,6 +33,8 @@ docs/            Setup, architecture, plans, and project guidance
 
 ## Documentation
 
+- [`docs/architecture.md`](docs/architecture.md) - current module ownership, data flow, security boundaries, and result calculations.
+- [`docs/deployment.md`](docs/deployment.md) - existing Vercel configuration, environment-variable names, verification, and rollback.
 - [`docs/authentication-setup.md`](docs/authentication-setup.md) - Google Sign-In, Auth.js, staff approval, and environment setup.
 - [`docs/EXAMINATION_RULES.md`](docs/EXAMINATION_RULES.md) - authoritative examination, grading, completeness, ranking, and publication rules.
 - [`docs/exam_id_naming_conventions.md`](docs/exam_id_naming_conventions.md) - examination identifier conventions.
@@ -63,7 +67,7 @@ node --test tests/*.test.mjs
 
 ## Deployment
 
-The supported deployment target is Next.js on Vercel. Configure the variables documented in `.env.example`, including the Sheets service-account credentials and Auth.js Google OAuth credentials.
+The supported deployment target is Next.js on Vercel. Configure the variables documented in `.env.example`, including Sheets service-account credentials, Auth.js Google OAuth credentials, and production rate limiting. See [`docs/deployment.md`](docs/deployment.md) for existing deployment commands and operational checks.
 
 ## Security
 

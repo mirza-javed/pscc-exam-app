@@ -1,73 +1,130 @@
-# Codex session summary - 2026-09-17
+# Codex session summary - 2026-09-19
 
 ## Current state
 
-- Tasks 1.1-1.4 remain intact, including server-side authentication, authorization, marks validation, data-integrity checks, and question-paper behavior.
-- Task 1.5 result calculation, All Exams reporting, and explicit publication tracking are implemented locally.
-- The authoritative policy is `docs/EXAMINATION_RULES.md`. It now contains the confirmed All Exams and historical publication rules.
-- No stored marks or live Google Sheets records were changed. Task 1.5 has not been committed or pushed in this session.
-- Earlier pushed work includes Task 1.2 commit `a4ba56c` and Task 1.3 commit `0f30dbb` on `origin/main`.
+- The All Exams calculation, presentation, UI, Excel, and PDF changes are implemented and pushed to `origin/main`.
+- Commit `bc3b154` (`feat(results): add all-exams result exports`) contains the work summarized below.
+- Tasks 1.1-1.4 remain intact, including authentication, server-side authorization, marks validation, atomic/safe Google Sheets writes, and associated security controls. The former Question Paper Submission and Academic Review module was subsequently removed and is no longer supported.
+- `docs/EXAMINATION_RULES.md` remains the authoritative examination policy and now documents All Exams ordering, aggregation, presentation, and status rules.
+- No live marks or Google Sheets records were changed.
+- The supplied reference workbook was excluded from source control because it contained identifiable student information; no copy is currently present in the workspace.
 
-## Task 1.5 result rules
+## Central result architecture
 
-- `lib/examinationResults.mjs` is the central resolver for screen, analytics, PDF, and Excel results.
-- A result uses exactly one valid `exam_scheme` row for each `Exam_ID + Grade + Subject`. Missing, duplicate, blank, zero, negative, or non-finite maximums block finalization; there is no fallback maximum.
-- Strict marks parsing rejects malformed prefixes, negative values, non-finite values, and values above the scheme maximum.
-- Approved absence aliases are normalized. Absence contributes zero obtained marks and the full maximum and forces failure.
-- Missing or blank marks make a result incomplete. Incomplete or invalid results do not receive final totals, percentages, grades, pass/fail status, or rank.
-- Identical duplicate marks collapse logically; conflicting duplicates produce `DUPLICATE_CONFLICT` and require correction.
-- Each subject must reach 40%; exactly 40% passes. Conduct is treated as a normal component and displayed last.
-- The college-wide scale is centralized in `lib/grading.js`: A++ 95, A+ 90, A 85, B++ 80, B+ 75, B 70, C 60, D 50, E 40, and U below 40. A configured `Grading_System` is validated and used when valid; ambiguous or overlapping rules fail closed.
-- Ranking includes only complete, valid results, including complete failed results. It orders by percentage and then obtained marks, with exact ties sharing rank.
+The result flow is now:
 
-## All Exams
+```text
+lib/examinationResults.mjs
+        -> authoritative calculations
+lib/resultPresentation.mjs
+        -> shared presentation models
+UI / Excel / PDF
+```
 
-- All Exams requires one Grade/Class and one Academic Session/Year.
-- Only exams with valid `exam_scheme` entries for that same grade and session are included. Exams from different sessions are never mixed.
-- Each exam keeps its identity and separate subject obtained/maximum marks in the UI and exports.
-- Grand Total Obtained and Grand Maximum are sums across all included exams. Overall Percentage is `Grand Total Obtained / Grand Maximum`; no averaging or weighting is applied.
-- The overall grade uses the standard college-wide scale. Existing absence, incomplete, pass/fail, duplicate, and exact-maximum rules apply across the combined result.
+- `lib/examinationResults.mjs` owns assessment resolution, exact maximum marks, absence handling, completeness, duplicate validation, totals, grades, status, and ranking.
+- It exposes shared `examTotals`, `subjectTotals`, `examColumns`, and `subjectColumns`.
+- `lib/resultPresentation.mjs` creates the individual and combined All Exams presentation models.
+- Analytics, result cards, Excel exports, and PDF exports consume those shared models instead of independently recalculating marks.
 
-## Publication tracking
+## Exam ordering and configuration
 
-- Publication status is never inferred from dates, marks, exports, or historical rows. Untracked results receive no Published or Revised label.
-- The smallest safe addition is the append-only `Result_Publications` sheet with columns:
-  `Publication_Event_ID, Result_Key, Kit_No, Grade, Section, Academic_Session, Result_Scope, Exam_ID, Result_Status, Calculation_Fingerprint, Policy_Version, Recorded_At, Recorded_By, Prior_Event_ID, Revision_Reason`.
-- Supported events are Draft, Published, and Revised. A matching latest fingerprint controls the displayed status; changed results after an official event are shown as `UNPUBLISHED_CHANGES`.
-- `POST /api/result-publications` reloads fresh source data and recomputes the result server-side. It does not trust client totals or status.
-- Only roles with the existing `canWriteAllMarks` authority can record publication events. Published/Revised require a complete valid result. Revised also requires a prior official event, a changed fingerprint, and a revision reason.
-- The storage layer validates the sheet schema and transition again, creates the actor and timestamp server-side, handles event-ID conflicts/idempotency, appends with RAW input, and never changes `Marks_Log`.
+- `exam_scheme` now includes integer `Exam_Order`.
+- All rows for the same exam must use the same order.
+- All Exams includes only exams from the selected Grade/Class and Academic Session/Year.
+- Included exams are ordered only by `Exam_Order` ascending. Exam ID and sheet row position are never ordering fallbacks.
+- Missing, non-integer, inconsistent, or duplicate included exam order is a configuration error and blocks finalization.
+- `Exam_Order` uniqueness is scoped to the same Grade/Class and Academic Session/Year.
+- The repository template at `docs/exam_scheme_template.csv` includes the new column.
 
-## UI, exports, and authorization
+## Individual All Exams result
 
-- Analytics and result cards now support a session selector and All Exams per-exam subject columns/rows.
-- Screen, PDF, and Excel use shared presentation data from `lib/resultPresentation.mjs` so obtained marks, maximums, totals, grades, and status agree.
-- PDF displays `REVISED RESULT` only for a matching explicit Revised event and `NOT FINAL` for incomplete or invalid results.
-- Marks Entry blocks entry when a single exact valid maximum is unavailable.
-- Subject teachers may read all marks for an assigned class/section and scheme subjects for their assigned grade so overall class analytics can be calculated. Their marks writes remain limited to assigned subjects through the existing server checks.
-- Existing class-teacher, section-head, administrator, preview, and mutation controls remain enforced. Publication rows are projected only for students visible to the requester.
+- Each subject occupies one row and each included exam occupies one dynamic column.
+- Each configured exam-subject cell displays `Obtained/Maximum`.
+- Absence displays `AB/Maximum` and contributes zero obtained plus the full maximum.
+- A required configured subject without marks displays `MISSING` and leaves the result incomplete.
+- A subject not configured for an included exam displays `N/A` and is not treated as missing.
+- Duplicate conflicts and configuration errors remain visible instead of being silently calculated.
+- Each subject Grand Total independently aggregates that subject across applicable included exams.
+- The final `Grand Total / Aggregate` row contains each exam total, the all-exams total, overall percentage, and overall grade.
+- Conduct remains part of the result and totals.
 
-## Main files
+## Combined/Class All Exams result
 
-- Policy and schema guidance: `docs/EXAMINATION_RULES.md`, `docs/exam_scheme_template.csv`, `docs/result_publications_template.csv`, and the root `README.md`.
-- Result calculation and formatting: `lib/examinationResults.mjs`, `lib/grading.js`, `lib/analytics.js`, `lib/resultPresentation.mjs`, `lib/pdfGenerator.js`, `lib/models.js`.
-- Publication storage/API: `lib/googleSheets.js`, `app/api/result-publications/route.js`.
-- UI: `components/Analytics/AnalyticsDashboard.jsx`, `components/Reports/CadetResultCards.jsx`, `components/MarksEntry/MarksEntryPortal.jsx`, `app/page.js`.
-- Authorization: `lib/authorization.mjs`.
-- Coverage: `tests/examination-results.test.mjs`, `tests/result-publications.test.mjs`, `tests/authorization.test.mjs`.
+- The combined view and exports use one dynamic column per applicable subject.
+- Each subject cell is that cadet's total obtained/maximum for the subject across all included exams.
+- The final columns are `Grand Total`, `Overall %`, `Combined Grade`, and `Result Status`.
+- Grade and status are separate. Incomplete, invalid, and configuration-error results have a blank grade.
+- Supported result status displays include `PASS`, `FAIL`, `INCOMPLETE`, `INVALID`, and `CONFIGURATION ERROR`.
+- Ranking applies only to complete and valid results. Higher percentage ranks first, followed by higher obtained marks; exact ties share rank. Complete failed results may still be ranked.
+
+## Excel exports
+
+- `exceljs@4.4.0` was added only for result workbook creation.
+- The existing `xlsx` dependency remains in place for marks imports, uploaded workbook reading, and existing import workflows.
+- ExcelJS is dynamically imported only when an export is requested. The production build places it in a separate lazy chunk rather than the initial page bundle.
+- All result-workbook generation and formatting lives in `lib/excelResultGenerator.mjs`.
+- `CadetResultCards.jsx` and `AnalyticsDashboard.jsx` only invoke the export actions and contain no result-workbook construction logic.
+- Individual exports use dynamic exam columns ordered by `Exam_Order`.
+- Combined exports use dynamic subject columns.
+- Formatting includes college/result headings, distinct headers, thin table borders, centered marks, left-aligned names and subjects, suitable widths, wrapped headers, bold totals, numeric percentage formatting, result-status emphasis, frozen panes, page setup, and repeated combined-result print headers.
+- The sample calculation comparison produced the expected individual total `471/615`, percentage `76.6%`, grade `B+`, and matching combined subject totals.
+- Intentional differences from the unfinished sample sheets are the professional heading/context rows, numeric Excel percentage cells, and the approved combined `Result Status` column.
+
+## UI and PDF consistency
+
+- The individual All Exams result card uses the shared subject-by-exam matrix.
+- The combined analytics table uses subject totals across all included exams rather than the latest exam only.
+- PDF generation consumes the same shared All Exams presentation models.
+- Existing single-exam result-card structure remains available and was not converted to the All Exams matrix.
+
+## Examination rules preserved
+
+- Maximum marks come from one exact `Exam_ID + Grade + Subject` scheme match. There is no default maximum and no borrowing from another exam.
+- Missing required marks never become zero.
+- Identical duplicates may collapse; conflicting duplicates block the final result.
+- Absence contributes zero obtained and the full configured maximum and forces failure.
+- Any required subject below 40% forces failure.
+- Conduct counts in totals.
+- The standard college-wide grading scale remains centralized.
+- Exams from different academic sessions are never combined.
+- Publication tracking remains explicit and is not inferred from marks, dates, or generated exports.
+
+## Main files changed
+
+- Calculation and presentation: `lib/examinationResults.mjs`, `lib/resultPresentation.mjs`, `lib/analytics.js`.
+- Excel and PDF exports: `lib/excelResultGenerator.mjs`, `lib/pdfGenerator.js`.
+- UI: `components/Reports/CadetResultCards.jsx`, `components/Analytics/AnalyticsDashboard.jsx`.
+- Policy/schema: `docs/EXAMINATION_RULES.md`, `docs/exam_scheme_template.csv`.
+- Dependencies: `package.json`, `package-lock.json`.
+- Tests: `tests/examination-results.test.mjs`, `tests/excel-generator.test.mjs`, `tests/pdf-generator.test.mjs`.
 
 ## Validation performed
 
-- `node --test tests/*.test.mjs`: 65 passed, 0 failed.
-- Coverage includes strict maximums, every absence alias, missing/blank marks, duplicate handling, session-scoped All Exams, preserved exam identities, grand totals, pass thresholds, grades, ranks/ties, Conduct, shared output formatting, publication appends/schema checks/conflicts, and authorization boundaries.
-- `npm run build`: passed, including `/api/result-publications`. Google Fonts download optimization emitted a non-fatal network warning.
-- `git diff --check`: passed apart from line-ending warnings.
-- The local app compiled and served successfully on port 3001. Protected manual UI verification could not be completed because `/api/staff-session` returned 401 without an authenticated account and browser automation could not attach reliably. The temporary port 3001 server was stopped; the existing port 3000 process was not touched.
+- Full suite: `node --test tests/*.test.mjs` -> 73 passed, 0 failed.
+- Focused result/export/PDF suite -> 20 passed, 0 failed.
+- Authentication, authorization, request validation, marks validation, publication, and safe-write regression suite -> 47 passed, 0 failed.
+- Excel tests verify headers, dynamic exam and subject columns, cell values, totals, percentages, grades, status, widths, borders, alignment, bold totals, and successful workbook serialization.
+- `npm run build` passed.
+- The build emitted only the existing non-fatal Google Fonts download/optimization warning.
+- `git diff --check` passed apart from line-ending conversion notices.
 
-## Deployment and migration handoff
+## Dependency review
 
-1. Add and populate `Academic_Session` in the production `exam_scheme` sheet using `docs/exam_scheme_template.csv`. All Exams remains unavailable for records whose session cannot be established safely.
-2. Create the append-only `Result_Publications` sheet using `docs/result_publications_template.csv` before enabling publication actions.
-3. Do not backfill or infer historical publication events. Record future Draft, Published, and Revised transitions explicitly.
-4. Verify authenticated desktop/mobile result views and PDF/Excel exports against staging data after the sheet schema is deployed.
-5. Review and commit the Task 1.5 changes, including this summary, when ready.
+- Installing ExcelJS added deprecated transitive packages including `glob@7`, `inflight`, `rimraf@2`, `fstream`, `lodash.isequal`, and `uuid@8`.
+- `npm audit` reports one ExcelJS-related moderate advisory through `uuid@8.3.2`.
+- Other reported high/critical advisories belong to existing Next.js and `xlsx` dependency trees and were not introduced by this result-export change.
+- No automatic audit fix or dependency downgrade was applied because that would change approved versions or unrelated application dependencies.
+
+## Deployment and follow-up
+
+1. Populate valid integer `Exam_Order` values in production `exam_scheme` data before enabling All Exams for that Grade/Class and Academic Session/Year.
+2. Confirm every exam has one consistent order and no two included exams share an order within the same grade/session scope.
+3. Verify authenticated desktop/mobile UI, PDF, and Excel downloads against staging data after the sheet schema is deployed.
+4. Review the ExcelJS transitive `uuid` advisory when a maintained compatible ExcelJS release becomes available.
+5. If the reference workbook is restored, keep it out of source control unless it is replaced with a fully synthetic, approved fixture.
+
+## Git handoff
+
+- `0f20382` - `feat(results): enforce examination rules and publication tracking`
+- `bc3b154` - `feat(results): add all-exams result exports`
+- `origin/main` and local `main` were both at `bc3b154` when this summary was prepared.
