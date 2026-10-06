@@ -1,43 +1,24 @@
 "use client";
-
 import { useState, useEffect } from "react";
-import { 
-  BarChart3, 
-  Edit3, 
-  Award, 
-  Sparkles, 
-  Users, 
-  ShieldCheck, 
-  Database, 
-  FileSpreadsheet, 
-  BookOpen, 
-  CheckCircle2, 
-  Clock, 
-  AlertCircle,
-  RefreshCw
-} from "lucide-react";
+import { BookOpen } from "lucide-react";
 import { useAuthStore } from "@/lib/store";
+import { usePreferencesStore } from "@/lib/preferencesStore";
 import LoginScreen from "@/components/Auth/LoginScreen";
 import Navbar from "@/components/Layout/Navbar";
 import HeroHeader from "@/components/Layout/HeroHeader";
 import MobileBottomNav from "@/components/Layout/MobileBottomNav";
-
 import MarksEntryPortal from "@/components/MarksEntry/MarksEntryPortal";
 import AnalyticsDashboard from "@/components/Analytics/AnalyticsDashboard";
 import CadetResultCards from "@/components/Reports/CadetResultCards";
+import useStaffSession from "@/hooks/useStaffSession";
+import useAcademicDatabase from "@/hooks/useAcademicDatabase";
 
 export default function Home() {
-  const [dbData, setDbData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState("analytics"); // Default to analytics dashboard
-  const [checkingSession, setCheckingSession] = useState(true);
 
   const isLoggedIn = useAuthStore((state) => state.isLoggedIn);
-  const setAuthenticatedUser = useAuthStore((state) => state.setAuthenticatedUser);
   const logout = useAuthStore((state) => state.logout);
-  const theme = useAuthStore((state) => state.theme);
+  const theme = usePreferencesStore((state) => state.theme);
   const effectiveContext = useAuthStore((state) => state.getEffectiveContext());
   const previewTeacherId = effectiveContext.isPreview
     ? effectiveContext.user?.Teacher_ID || ""
@@ -52,61 +33,16 @@ export default function Home() {
     }
   }, [theme]);
 
-  // Load database from API
-  const fetchDatabase = async (forceRefresh = false) => {
-    try {
-      if (forceRefresh) setRefreshing(true);
-      else setLoading(true);
-      setError(null);
-
-      const params = new URLSearchParams();
-      if (forceRefresh) params.set("refresh", "true");
-      if (previewTeacherId) params.set("previewTeacherId", previewTeacherId);
-      const query = params.toString();
-      const res = await fetch(`/api/database${query ? `?${query}` : ""}`);
-      if (res.status === 401) {
-        logout();
-        return;
-      }
-      const json = await res.json();
-
-      if (!json.success) {
-        const reference = json.requestId ? ` (Reference: ${json.requestId})` : "";
-        throw new Error(`${json.error || "Failed to load master database"}${reference}`);
-      }
-
-      setDbData(json);
-    } catch (err) {
-      console.error("DB Fetch Error:", err);
-      setError(err.message);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/staff-session", { cache: "no-store" })
-      .then((response) => response.ok ? response.json() : null)
-      .then((result) => {
-        if (cancelled) return;
-        if (result?.success) setAuthenticatedUser(result.user, result.permissions);
-        else logout();
-      })
-      .catch(() => { if (!cancelled) logout(); })
-      .finally(() => { if (!cancelled) setCheckingSession(false); });
-    return () => { cancelled = true; };
-  }, [setAuthenticatedUser, logout]);
-
-  useEffect(() => {
-    if (isLoggedIn && !checkingSession) fetchDatabase();
-  }, [isLoggedIn, checkingSession, previewTeacherId]);
+  const { checkingSession } = useStaffSession();
+  const { dbData, loading, refreshing, fetchDatabase } = useAcademicDatabase({
+    isLoggedIn,
+    checkingSession,
+    previewTeacherId,
+    logout,
+  });
 
   const db = dbData?.data || {};
   const staffList = db.Staff_Directory || [];
-  const meta = dbData?.meta;
-  const counts = meta?.counts || {};
 
   // If initial loading screen
   if (checkingSession || (isLoggedIn && loading && !dbData)) {
@@ -133,14 +69,26 @@ export default function Home() {
   }
 
   // Authenticated Portal View
-  const user = effectiveContext.user;
-  const perms = effectiveContext.permissions;
-  const isAdmin = perms?.isAdmin;
 
   const tabs = [
-    { id: "analytics", label: "📊 Examination Analytics", shortLabel: "Analytics", desc: "Class averages, rankings & distributions" },
-    { id: "marks", label: "✍️ Marks Data Entry", shortLabel: "Marks Entry", desc: "Fast mobile grid & Excel bulk upload" },
-    { id: "reports", label: "📋 Result Reports & Cards", shortLabel: "Result Cards", desc: "Printable cadet report cards" },
+    {
+      id: "analytics",
+      label: "📊 Examination Analytics",
+      shortLabel: "Analytics",
+      desc: "Class averages, rankings & distributions",
+    },
+    {
+      id: "marks",
+      label: "✍️ Marks Data Entry",
+      shortLabel: "Marks Entry",
+      desc: "Fast mobile grid & Excel bulk upload",
+    },
+    {
+      id: "reports",
+      label: "📋 Result Reports & Cards",
+      shortLabel: "Result Cards",
+      desc: "Printable cadet report cards",
+    },
   ];
 
   return (
@@ -180,11 +128,20 @@ export default function Home() {
         {/* Tab Content Display */}
         <div className="space-y-6">
           {activeTab === "analytics" ? (
-            <AnalyticsDashboard db={db} onNavigateToMarks={() => setActiveTab("marks")} />
+            <AnalyticsDashboard
+              db={db}
+              onNavigateToMarks={() => setActiveTab("marks")}
+            />
           ) : activeTab === "marks" ? (
-            <MarksEntryPortal db={db} onMarksSaved={() => fetchDatabase(true)} />
+            <MarksEntryPortal
+              db={db}
+              onMarksSaved={() => fetchDatabase(true)}
+            />
           ) : activeTab === "reports" ? (
-            <CadetResultCards db={db} onPublicationSaved={() => fetchDatabase(true)} />
+            <CadetResultCards
+              db={db}
+              onPublicationSaved={() => fetchDatabase(true)}
+            />
           ) : null}
         </div>
       </main>

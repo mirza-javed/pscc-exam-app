@@ -1,34 +1,34 @@
 "use client";
 
 import { useState } from "react";
-import { 
-  GraduationCap, 
-  Sun, 
-  Moon, 
-  LogOut, 
-  User, 
-  ShieldCheck, 
-  Eye, 
-  ChevronDown, 
+import {
+  Sun,
+  Moon,
+  LogOut,
+  Eye,
+  ChevronDown,
   RefreshCw,
-  Sparkles,
-  X
+  X,
 } from "lucide-react";
 import { useAuthStore } from "@/lib/store";
+import { usePreferencesStore } from "@/lib/preferencesStore";
 import { signOut } from "next-auth/react";
 
-export default function Navbar({ staffList = [], db = {}, onRefresh, refreshing }) {
+export default function Navbar({
+  staffList = [],
+  db = {},
+  onRefresh,
+  refreshing,
+}) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [previewModalOpen, setPreviewModalOpen] = useState(false);
 
-  const user = useAuthStore((state) => state.user);
   const permissions = useAuthStore((state) => state.permissions);
-  const previewUser = useAuthStore((state) => state.previewUser);
   const setPreviewUser = useAuthStore((state) => state.setPreviewUser);
   const clearPreview = useAuthStore((state) => state.clearPreview);
   const logout = useAuthStore((state) => state.logout);
-  const theme = useAuthStore((state) => state.theme);
-  const toggleTheme = useAuthStore((state) => state.toggleTheme);
+  const theme = usePreferencesStore((state) => state.theme);
+  const toggleTheme = usePreferencesStore((state) => state.toggleTheme);
 
   const effectiveContext = useAuthStore((state) => state.getEffectiveContext());
   const activeUser = effectiveContext.user;
@@ -78,7 +78,11 @@ export default function Navbar({ staffList = [], db = {}, onRefresh, refreshing 
                 title="Preview portal as another faculty member"
               >
                 <Eye className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                <span>{isPreview ? `Viewing As: ${activeUser?.Full_Name?.split(" ")[0]}` : "View As Teacher"}</span>
+                <span>
+                  {isPreview
+                    ? `Viewing As: ${activeUser?.Full_Name?.split(" ")[0]}`
+                    : "View As Teacher"}
+                </span>
                 <ChevronDown className="w-3 h-3 opacity-60" />
               </button>
 
@@ -100,7 +104,10 @@ export default function Navbar({ staffList = [], db = {}, onRefresh, refreshing 
 
                   {isPreview && (
                     <button
-                      onClick={() => { clearPreview(); setPreviewModalOpen(false); }}
+                      onClick={() => {
+                        clearPreview();
+                        setPreviewModalOpen(false);
+                      }}
                       className="w-full py-1.5 px-2.5 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-900 rounded-lg text-xs font-semibold hover:bg-rose-100 transition-colors text-left flex items-center justify-between"
                     >
                       <span>Exit Simulation (Back to Admin)</span>
@@ -141,7 +148,9 @@ export default function Navbar({ staffList = [], db = {}, onRefresh, refreshing 
               title="Refresh database"
               aria-label="Refresh Database"
             >
-              <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin text-blue-600" : ""}`} />
+              <RefreshCw
+                className={`w-4 h-4 ${refreshing ? "animate-spin text-blue-600" : ""}`}
+              />
             </button>
           )}
 
@@ -152,7 +161,11 @@ export default function Navbar({ staffList = [], db = {}, onRefresh, refreshing 
             title="Toggle theme"
             aria-label="Toggle Theme"
           >
-            {theme === "dark" ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-700" />}
+            {theme === "dark" ? (
+              <Sun className="w-4 h-4 text-amber-400" />
+            ) : (
+              <Moon className="w-4 h-4 text-slate-700" />
+            )}
           </button>
 
           {/* User Profile Pill & Dropdown */}
@@ -191,7 +204,11 @@ export default function Navbar({ staffList = [], db = {}, onRefresh, refreshing 
                 </div>
 
                 <button
-                  onClick={async () => { setDropdownOpen(false); logout(); await signOut({ callbackUrl: "/" }); }}
+                  onClick={async () => {
+                    setDropdownOpen(false);
+                    logout();
+                    await signOut({ callbackUrl: "/" });
+                  }}
                   className="w-full text-left px-3 py-2 rounded-xl text-xs font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors flex items-center gap-2"
                 >
                   <LogOut className="w-4 h-4" />

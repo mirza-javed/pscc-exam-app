@@ -1,0 +1,59 @@
+globalThis.task24 = { loggedIn: false, calls: [], errors: [], saveFailure: false };
+const Students = [["100","Alpha","A",90],["101","Beta","A",0],["200","Gamma","B",70],["300","Delta","C",60]];
+task24.db = {
+  Students: Students.map(([Kit_No, name, Section]) => ({ Kit_No, Name: `Synthetic ${name}`, Grade: "9", Section, Group: "Science" })),
+  exam_scheme: ["E1","E2"].map((Exam_ID, i) => ({ Exam_ID, Grade: "9", Subject: "English", Max_Marks: 100, Academic_Session: "2026-27", Exam_Order: i+1 })),
+  Marks_Log: Students.flatMap(([Kit_No, , , marks]) => ["E1","E2"].map((Exam_ID) => ({ Kit_No, Exam_ID, Subject: "English", Marks_Obtained: marks, Submission_ID: `${Exam_ID}-${Kit_No}` }))),
+  Grading_System: [], Authorization_Scope: { fullGradeRead: { "9": true } }, Authorization_Issues: { duplicateKitNos: [] },
+  Staff_Directory: [
+    { Teacher_ID: "SYNTH_ADMIN", Full_Name: "Synthetic Administrator", Role: "Admin_Exam", Active: "TRUE" },
+    { Teacher_ID: "SYNTH_TEACHER", Full_Name: "Synthetic Teacher", Role: "Teacher", Active: "TRUE" }
+  ],
+  Teaching_Assignments: [{ Teacher_ID: "SYNTH_TEACHER", Grade: "9", Section: "A", Subject: "English" }]
+};
+await page.route("**/api/**", async (route) => {
+  const url = new URL(route.request().url());
+  const pathname = url.pathname;
+  task24.calls.push(pathname + url.search);
+  let body;
+  let status = 200;
+  if (pathname === "/api/staff-session") {
+    body = task24.loggedIn ? { success: true, user: task24.db.Staff_Directory[0], permissions: { isAdmin: true, canReadAllAcademicData: true, canWriteAllMarks: true, canRefreshDatabase: true } } : { success: false };
+    if (!task24.loggedIn) status = 401;
+  } else if (pathname === "/api/database") body = { success: true, data: task24.db, meta: { counts: {} } };
+  else if (pathname === "/api/auth/providers") body = { google: { id: "google", name: "Google", type: "oauth", signinUrl: "http://localhost:3014/api/auth/signin/google", callbackUrl: "http://localhost:3014/api/auth/callback/google" } };
+  else if (pathname === "/api/auth/csrf") body = { csrfToken: "synthetic-local-only" };
+  else if (pathname === "/api/auth/signin/google") { task24.loggedIn = true; body = { url: "http://localhost:3014/?syntheticLogin=1" }; }
+  else if (pathname === "/api/auth/signout") { task24.loggedIn = false; body = { url: "http://localhost:3014/" }; }
+  else if (pathname === "/api/auth/session") body = null;
+  else if (pathname === "/api/marks") {
+    const payload = route.request().postDataJSON();
+    task24.lastSave = payload;
+    if (task24.saveFailure) { status = 400; body = { success: false, error: "Synthetic save failure", requestId: "local-test" }; }
+    else {
+      for (const record of payload.records) {
+        const existing = task24.db.Marks_Log.find((row) => row.Kit_No === record.Kit_No && row.Exam_ID === payload.examId && row.Subject === payload.subject);
+        if (existing) existing.Marks_Obtained = record.attendance === "absent" ? "Absent" : record.Marks_Obtained;
+      }
+      body = { success: true, count: payload.records.length, message: "Synthetic save successful" };
+    }
+  } else if (pathname === "/api/result-publications") { task24.lastPublication = route.request().postDataJSON(); body = { success: true }; }
+  else { status = 404; body = { error: "Unmocked local test API blocked" }; }
+  await route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
+});
+page.on("pageerror", (error) => task24.errors.push(error.message));
+await page.addInitScript(() => {
+  window.__task24Downloads = [];
+  const blobs = new Map();
+  const originalUrl = URL.createObjectURL.bind(URL);
+  URL.createObjectURL = (blob) => { const url = originalUrl(blob); blobs.set(url, blob); return url; };
+  const click = HTMLAnchorElement.prototype.click;
+  HTMLAnchorElement.prototype.click = function () {
+    if (this.download && blobs.has(this.href)) window.__task24Downloads.push({ name: this.download, blob: blobs.get(this.href) });
+    else click.call(this);
+  };
+});
+await page.setViewportSize({ width: 1440, height: 1000 });
+await page.goto("http://localhost:3014/", { waitUntil: "domcontentloaded" });
+await expect(page.getByRole("button", { name: "Continue with Google" })).toBeVisible();
+return await tabbit.observe({ frames: "none", maxChars: 4000 });
