@@ -64,6 +64,7 @@ mockServerModule("lib/repositories/googleSheetsClient.js", {
   }),
 });
 const repo = await import("../lib/repositories/academicRepository.js");
+const { parseTabRows } = await import("../lib/repositories/sheetRows.mjs");
 const { saveOrUpdateMarksLog } = await import(
   "../lib/repositories/marksRepository.js"
 );
@@ -134,5 +135,44 @@ test("runtime distinguishes missing required tabs, absent optional tabs and malf
     );
   } finally {
     snapshot.Students = students;
+  }
+});
+
+test("exam reads ignore explanatory cells beyond header table and exclude auxiliary-only rows", async () => {
+  const original = snapshot.exam_scheme;
+  const headers = [
+    "Exam_ID",
+    "Exam_Name",
+    "Academic_Session",
+    "Grade",
+    "Subject",
+    "Max_Marks",
+    "Exam_Order",
+  ];
+  const record = ["E1", "Synthetic", "2026-27", "9", "English", "100", "1"];
+  const rows = [
+    headers,
+    [...record, "", "", "Explanation", "Helper", "Note"],
+    ["", "", "", "", "", "", "", "", "", "Explanation"],
+  ];
+  snapshot.exam_scheme = rows;
+  try {
+    const fresh = await repo.loadFreshDatabaseTabs(["exam_scheme"]);
+    assert.deepEqual(fresh.exam_scheme, [
+      Object.fromEntries(headers.map((h, i) => [h, record[i]])),
+    ]);
+    const reordered = rows.map((row) => [
+      ...row.slice(0, 7).toReversed(),
+      ...row.slice(7),
+    ]);
+    assert.deepEqual(parseTabRows(reordered, "exam_scheme"), fresh.exam_scheme);
+    const malformed = rows.map((row) => ["", ...row]);
+    malformed[1][0] = "Unknown inside table";
+    assert.throws(
+      () => parseTabRows(malformed, "exam_scheme"),
+      /UNNAMED_POPULATED_COLUMN/,
+    );
+  } finally {
+    snapshot.exam_scheme = original;
   }
 });

@@ -6,7 +6,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { validateDataSnapshot } from "../lib/validation/dataIntegrity.mjs";
-import { inspectSheet } from "../lib/schemas/sheetsSchema.mjs";
+import {
+  inspectSheet,
+  SheetSchemaError,
+  sheetColumnLabel,
+} from "../lib/schemas/sheetsSchema.mjs";
 import {
   collectSnapshot,
   validateSnapshotWithPhotos,
@@ -16,6 +20,83 @@ import { formatValidationReport } from "../lib/validation/dataValidationReport.m
 
 const fixtureUrl = new URL("./fixtures/data-validation.json", import.meta.url);
 const fixture = () => JSON.parse(readFileSync(fixtureUrl, "utf8"));
+
+test("schema errors identify cells and header locations without printing cell payloads", () => {
+  const snapshot = fixture();
+  const rows = snapshot.tabs.exam_scheme;
+  const record = [...rows[1]];
+  rows[0].unshift("");
+  rows[1].unshift("");
+  for (let i = 0; i < 12; i++) rows.push(["PRIVATE_HELPER_VALUE", ...record]);
+  const { issues } = inspectSheet("exam_scheme", rows);
+  const error = new SheetSchemaError(issues);
+  assert.match(
+    error.message,
+    /UNNAMED_POPULATED_COLUMN at A3 \(check header A1\)/,
+  );
+  assert.match(error.message, /4 additional issues/);
+  assert.equal(error.issues.length, 12);
+  assert.doesNotMatch(error.message, /PRIVATE_HELPER_VALUE/);
+  assert.equal(sheetColumnLabel(27), "AA");
+  assert.equal(sheetColumnLabel(703), "AAA");
+});
+
+test("exam-scheme auxiliary content outside the declared header table warns without becoming records", () => {
+  const snapshot = fixture();
+  const headers = [
+    "Exam_ID",
+    "Exam_Name",
+    "Academic_Session",
+    "Grade",
+    "Subject",
+    "Max_Marks",
+    "Exam_Order",
+  ];
+  const row = [
+    "E1",
+    "Synthetic",
+    "2026-27",
+    "9",
+    "English",
+    "100",
+    "1",
+    "",
+    "",
+    "PRIVATE_EXPLANATION",
+    "HELPER",
+    "NOTE",
+  ];
+  snapshot.tabs.exam_scheme = [
+    headers,
+    row,
+    ["", "", "", "", "", "", "", "", "", "PRIVATE_EXPLANATION"],
+  ];
+  const report = validateDataSnapshot(snapshot);
+  assert.equal(report.valid, true);
+  assert.equal(
+    report.sheets.find((s) => s.tab === "exam_scheme").recordsExamined,
+    1,
+  );
+  assert.ok(
+    report.findings.some(
+      (f) =>
+        f.code === "AUXILIARY_CONTENT_OUTSIDE_TABLE" &&
+        f.column === 10 &&
+        f.severity === "WARNING",
+    ),
+  );
+  assert.doesNotMatch(
+    JSON.stringify(report),
+    /PRIVATE_EXPLANATION|HELPER|NOTE/,
+  );
+  snapshot.tabs.exam_scheme = snapshot.tabs.exam_scheme.map((r) => ["", ...r]);
+  snapshot.tabs.exam_scheme[1][0] = "PRIVATE_EXPLANATION";
+  assert.ok(
+    validateDataSnapshot(snapshot).findings.some(
+      (f) => f.code === "UNNAMED_POPULATED_COLUMN" && f.severity === "CRITICAL",
+    ),
+  );
+});
 const codes = (snapshot) =>
   validateDataSnapshot(snapshot).findings.map((f) => f.code);
 const set = (snapshot, tab, field, value, row = 1) => {

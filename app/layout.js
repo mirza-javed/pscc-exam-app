@@ -13,7 +13,7 @@ export const metadata = {
   description: "Mobile-First Academic & Examination Management Portal for Pakistan Steel Cadet College Karachi",
   manifest: "/manifest.json",
   icons: {
-    icon: "/favicon.ico",
+    icon: { url: "/pscc-logo.jpg", type: "image/jpeg" },
   },
 };
 
