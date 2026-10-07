@@ -1,0 +1,55 @@
+{
+  "tabs": {
+    "Students": [
+      ["Kit_No", "Name", "Grade", "Section", "Group"],
+      ["00100", "Synthetic Cadet", "9", "A", "General"]
+    ],
+    "Staff_Directory": [
+      ["Teacher_ID", "Email", "Active", "Role"],
+      ["T1", "teacher@example.test", "TRUE", "Teacher"]
+    ],
+    "Teaching_Assignments": [
+      ["Teacher_ID", "Assigned_Grade", "Subject", "Assigned_Section_A"],
+      ["T1", "9", "English", "TRUE"]
+    ],
+    "exam_scheme": [
+      [
+        "Exam_ID",
+        "Grade",
+        "Subject",
+        "Max_Marks",
+        "Academic_Session",
+        "Exam_Order"
+      ],
+      ["E1", "9", "English", "100", "2026-27", "1"]
+    ],
+    "Marks_Log": [
+      ["Submission_ID", "Kit_No", "Exam_ID", "Subject", "Marks_Obtained"],
+      ["S1", "00100", "E1", "English", "80"]
+    ],
+    "Grading_System": [
+      ["Grade", "Min_Percentage", "Max_Percentage", "Remarks"]
+    ],
+    "Group_Subjects": [["Subjects_of_General"], ["English"]],
+    "Subjects_Master": [["Subject_Name"], ["English"]],
+    "Result_Publications": [
+      [
+        "Publication_Event_ID",
+        "Result_Key",
+        "Kit_No",
+        "Grade",
+        "Section",
+        "Academic_Session",
+        "Result_Scope",
+        "Exam_ID",
+        "Result_Status",
+        "Calculation_Fingerprint",
+        "Policy_Version",
+        "Recorded_At",
+        "Recorded_By",
+        "Prior_Event_ID",
+        "Revision_Reason"
+      ]
+    ]
+  }
+}

@@ -168,8 +168,8 @@ test("row aliases retain strings and portal inconsistencies remain explicit", ()
   assert.deepEqual(
     parseTabRows(
       [
-        ["Student_ID", "Full Name", "Stream"],
-        ["001", " Cadet ", "Bio"],
+        ["Student_ID", "Full Name", "Stream", "Grade", "Section"],
+        ["001", " Cadet ", "Bio", "9", "A"],
       ],
       "Students",
     ),
@@ -181,6 +181,8 @@ test("row aliases retain strings and portal inconsistencies remain explicit", ()
         Kit_No: "001",
         Group: "Bio",
         Name: "Cadet",
+        Grade: "9",
+        Section: "A",
       },
     ],
   );

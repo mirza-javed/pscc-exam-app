@@ -1,23 +1,72 @@
 import { mockServerModule } from "./helpers/serverImports.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
+const snapshot = JSON.parse(
+  readFileSync(
+    new URL("./fixtures/data-validation.json", import.meta.url),
+    "utf8",
+  ),
+).tabs;
+snapshot.Students = [
+  ["Kit_No", "Full_Name", "Group", "Grade", "Section"],
+  ["100", "Synthetic", "Science", "9", "A"],
+];
+delete snapshot.Result_Publications;
 const calls = { batches: 0, contexts: 0 };
-const marksHeaders = ["Submission_ID", "Kit_No", "Exam_ID", "Subject", "Marks_Obtained"];
-const sheets = { spreadsheets: {
-  get: async () => ({ data: { sheets: [{ properties: { title: "Students" } }, { properties: { title: "Marks_Log", sheetId: 1 } }] } }),
-  batchUpdate: async () => ({}),
-  values: {
-    batchGet: async ({ ranges }) => { calls.batches++; return { data: { valueRanges: ranges.map((range) => ({ values: range.includes("Students") ? [["Kit_No", "Full_Name", "Group"], ["100", "Synthetic", "Science"]] : [] })) } }; },
-    get: async ({ range }) => ({ data: { values: range.includes("Marks_Log") ? [marksHeaders] : [["Email", "Active"], ["approved@example.test", "TRUE"]] } }),
+const marksHeaders = [
+  "Submission_ID",
+  "Kit_No",
+  "Exam_ID",
+  "Subject",
+  "Marks_Obtained",
+];
+const sheets = {
+  spreadsheets: {
+    get: async () => ({
+      data: {
+        sheets: Object.keys(snapshot).map((title) => ({
+          properties: { title, sheetId: 1 },
+        })),
+      },
+    }),
+    batchUpdate: async () => ({}),
+    values: {
+      batchGet: async ({ ranges }) => {
+        calls.batches++;
+        return {
+          data: {
+            valueRanges: ranges.map((range) => ({
+              values: snapshot[range.slice(1, -1)],
+            })),
+          },
+        };
+      },
+      get: async ({ range }) => ({
+        data: {
+          values: range.includes("Marks_Log")
+            ? [marksHeaders]
+            : snapshot.Staff_Directory,
+        },
+      }),
+    },
   },
-} };
+};
 mockServerModule("lib/repositories/googleSheetsClient.js", {
-  getGoogleAuth: () => { calls.contexts++; return { sheets }; },
+  getGoogleAuth: () => {
+    calls.contexts++;
+    return { sheets };
+  },
   getSpreadsheetId: async () => "synthetic-workbook",
-  getWriteContext: async () => ({ sheets, spreadsheetId: "synthetic-workbook" }),
+  getWriteContext: async () => ({
+    sheets,
+    spreadsheetId: "synthetic-workbook",
+  }),
 });
 const repo = await import("../lib/repositories/academicRepository.js");
-const { saveOrUpdateMarksLog } = await import("../lib/repositories/marksRepository.js");
+const { saveOrUpdateMarksLog } = await import(
+  "../lib/repositories/marksRepository.js"
+);
 
 test("academic repository retains row aliases, optional tabs, cache hits and explicit refresh", async () => {
   const first = await repo.loadMasterDatabase();
@@ -39,7 +88,11 @@ test("approval and protected reads bypass the master cache and filter tab names"
   await repo.loadAuthorizationData();
   await repo.loadAuthorizationData();
   assert.equal(calls.batches, before + 2);
-  const fresh = await repo.loadFreshDatabaseTabs(["Students", "Students", "unknown"]);
+  const fresh = await repo.loadFreshDatabaseTabs([
+    "Students",
+    "Students",
+    "unknown",
+  ]);
   assert.deepEqual(Object.keys(fresh), ["Students"]);
   const after = calls.batches;
   assert.deepEqual(await repo.loadFreshDatabaseTabs(["unknown"]), {});
@@ -49,6 +102,37 @@ test("approval and protected reads bypass the master cache and filter tab names"
 
 test("successful marks persistence invalidates the same academic cache", async () => {
   assert.equal((await repo.loadMasterDatabase())._cached, true);
-  await saveOrUpdateMarksLog([{ Kit_No: "100", Exam_ID: "E1", Subject: "English", Marks_Obtained: "80" }]);
+  await saveOrUpdateMarksLog([
+    { Kit_No: "100", Exam_ID: "E1", Subject: "English", Marks_Obtained: "80" },
+  ]);
   assert.equal((await repo.loadMasterDatabase())._cached, false);
+});
+
+test("runtime distinguishes missing required tabs, absent optional tabs and malformed reads", async () => {
+  assert.deepEqual(await repo.loadFreshDatabaseTabs(["Result_Publications"]), {
+    Result_Publications: [],
+  });
+  const students = snapshot.Students;
+  delete snapshot.Students;
+  try {
+    await assert.rejects(
+      repo.loadMasterDatabase(true),
+      /Students: MISSING_SHEET/,
+    );
+    await assert.rejects(
+      repo.loadFreshDatabaseTabs(["Students"]),
+      /Students: MISSING_SHEET/,
+    );
+  } finally {
+    snapshot.Students = students;
+  }
+  snapshot.Students = [];
+  try {
+    await assert.rejects(
+      repo.loadFreshDatabaseTabs(["Students"]),
+      /MISSING_HEADERS/,
+    );
+  } finally {
+    snapshot.Students = students;
+  }
 });
