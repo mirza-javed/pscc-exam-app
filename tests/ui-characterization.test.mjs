@@ -373,17 +373,19 @@ test("page bootstrap, preview refresh, module routing and logout retain their li
     view = render(Home);
   });
   assert.equal(calls[0].options.cache, "no-store");
-  assert.equal(calls[1].url, "/api/database");
+  assert.equal(calls[1].url, "/api/academic-config");
+  assert.ok(calls.some((call) => call.url.startsWith("/api/analytics-data?")));
+  assert.ok(!calls.some((call) => call.url.startsWith("/api/database")));
   assert.ok(textOf(view.root).includes("Examination Analytics"));
   await act(async () => {
     useAuthStore
       .getState()
       .setPreviewUser({ Teacher_ID: "TEACHER", Role: "Teacher" }, db);
   });
-  assert.equal(calls.at(-1).url, "/api/database?previewTeacherId=TEACHER");
-  act(() => button(view, "Marks Data Entry").props.onClick());
+  assert.ok(calls.some((call) => call.url === "/api/academic-config?previewTeacherId=TEACHER"));
+  await act(async () => button(view, "Marks Data Entry").props.onClick());
   assert.match(textOf(view.root), /Marks Data Entry & Class Selection/);
-  act(() => button(view, "Result Reports").props.onClick());
+  await act(async () => button(view, "Result Reports").props.onClick());
   assert.match(textOf(view.root), /Result/);
   act(() => useAuthStore.getState().logout());
   assert.ok(button(view, "Continue with Google"));

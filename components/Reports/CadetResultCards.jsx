@@ -10,12 +10,15 @@ import useCadetSelection from "@/hooks/useCadetSelection";
 import useResultExport from "@/hooks/useResultExport";
 import useResultPublication from "@/hooks/useResultPublication";
 
-export default function CadetResultCards({ db = {}, onPublicationSaved }) {
+export default function CadetResultCards({ db = {}, onPublicationSaved, scoped = false, revision = 0 }) {
   const effectiveContext = useAuthStore((state) => state.getEffectiveContext());
   const canPublishResults =
     effectiveContext.permissions?.canWriteAllMarks &&
     !effectiveContext.isPreview;
   const {
+    resultDb,
+    loading,
+    error,
     selectedGrade,
     setSelectedGrade,
     selectedSection,
@@ -49,7 +52,7 @@ export default function CadetResultCards({ db = {}, onPublicationSaved }) {
     currentIndex,
     handleNextCadet,
     handlePrevCadet,
-  } = useCadetSelection(db);
+  } = useCadetSelection(db, { scoped, revision });
   const [toastMessage, setToastMessage] = useState(null);
   const {
     downloadingPdf,
@@ -80,12 +83,14 @@ export default function CadetResultCards({ db = {}, onPublicationSaved }) {
     selectedExam,
     setToastMessage,
     onPublicationSaved,
-    publicationEvents: db.Result_Publications || [],
+    publicationEvents: resultDb.Result_Publications || [],
     actorId: effectiveContext.realUser?.Teacher_ID || effectiveContext.user?.Teacher_ID || "current",
   });
 
   return (
     <div className="min-w-0 max-w-full space-y-6">
+      {loading && <p role="status" className="text-sm">Loading academic data...</p>}
+      {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
       {/* Toast Notification Banner */}
       {toastMessage && (
         <div

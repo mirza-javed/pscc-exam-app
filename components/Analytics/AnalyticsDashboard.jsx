@@ -10,10 +10,11 @@ import AnalyticsKpiCards from "./AnalyticsKpiCards";
 import AnalyticsCharts from "./AnalyticsCharts";
 import PerformerCards from "./PerformerCards";
 import MeritTable from "./MeritTable";
+import useAcademicCohort from "@/hooks/useAcademicCohort";
 import useAcademicFilters from "@/hooks/useAcademicFilters";
 import useAnalyticsMeritGrid from "@/hooks/useAnalyticsMeritGrid";
 
-export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
+export default function AnalyticsDashboard({ db = {}, onNavigateToMarks, scoped = false, revision = 0 }) {
   const {
     selectedGrade,
     setSelectedGrade,
@@ -29,16 +30,18 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
     examOptions,
   } = useAcademicFilters(db);
 
+  const cohort = useAcademicCohort({ grade: selectedGrade, section: selectedSection, exam: selectedExam, session: selectedSession, scoped, revision });
+  const resultDb = useMemo(() => scoped ? cohort.payload?.data || {} : db, [scoped, cohort.payload, db]);
   // Compute analytics data for current filter
   const analytics = useMemo(() => {
     return buildClassAnalyticsData(
-      db,
+      resultDb,
       selectedGrade,
       selectedSection,
       selectedExam,
       selectedSession,
     );
-  }, [db, selectedGrade, selectedSection, selectedExam, selectedSession]);
+  }, [resultDb, selectedGrade, selectedSection, selectedExam, selectedSession]);
 
   const {
     kpis,
@@ -107,6 +110,8 @@ export default function AnalyticsDashboard({ db = {}, onNavigateToMarks }) {
 
   return (
     <div className="space-y-6">
+      {cohort.loading && <p role="status" className="text-sm">Loading academic data...</p>}
+      {cohort.error && <p role="alert" className="text-sm text-red-600">{cohort.error}</p>}
       <AnalyticsFilters
         selectedGrade={selectedGrade}
         setSelectedGrade={setSelectedGrade}

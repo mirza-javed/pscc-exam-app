@@ -5,6 +5,7 @@ import { jsPDF } from "jspdf";
 import { ALL_EXAMS, ALL_SECTIONS, resolveClassResults } from "../lib/examinationResults.mjs";
 import {
   buildMeritMasterSheetTableModel,
+  downloadMeritMasterSheetPDF,
   renderCadetResultCardToDoc,
   renderPerformerSummaryToDoc,
 } from "../lib/pdfGenerator.js";
@@ -131,4 +132,25 @@ test("analytics PDF performer summary includes a dedicated page and tolerates mi
   });
   assert.equal(doc.internal.getNumberOfPages(), 2);
   assert.ok(doc.output("arraybuffer").byteLength > 1000);
+});
+
+test("actual ALL-section merit PDF renders subject cells with the Section column offset", async () => {
+  const { resourceFixture } = await import("./helpers/resourceFixture.mjs");
+  const { buildClassAnalyticsData } = await import("../lib/analytics.js");
+  const { db } = resourceFixture();
+  const analytics = buildClassAnalyticsData(db, "10", ALL_SECTIONS, "E1", "2026-27");
+  const originalSave = jsPDF.API.save;
+  const originalFetch = globalThis.fetch;
+  let saved;
+  jsPDF.API.save = function (name) { saved = { name, bytes: this.output("arraybuffer").byteLength }; return this; };
+  globalThis.fetch = async () => ({ ok: false, status: 404 });
+  try {
+    await downloadMeritMasterSheetPDF({ ...analytics, grade: "10", section: ALL_SECTIONS, exam: "E1", academicSession: "2026-27" });
+    assert.match(saved.name, /Grade_Class.*ALL.*E1/);
+    assert.ok(saved.bytes > 1000);
+  } finally {
+    if (originalSave === undefined) delete jsPDF.API.save;
+    else jsPDF.API.save = originalSave;
+    globalThis.fetch = originalFetch;
+  }
 });

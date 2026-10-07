@@ -79,3 +79,12 @@ All Exams uses one grade and academic session and orders exams by valid, consist
 ## Verification boundary
 
 Existing Node tests cover security, authorization, marks validation/storage, results, and exports. A production build checks Next.js integration. Automated document-generation tests do not establish complete visual fidelity, and neither tests nor a build prove live Vercel/Sheets configuration. Use synthetic staging records for authenticated workflow verification.
+
+
+## Scoped reads (Phase 3, Task 3.3)
+
+Startup configuration, analytics and result-card reads now use `/api/academic-config`, `/api/analytics-data`, and `/api/students`. `GET /api/marks` provides a separate paginated marks-read contract; its existing POST remains unchanged. `lib/services/resourceReadService.mjs` owns projection/filtering; `lib/resourceQuery.mjs` owns validated queries and dataset-bound cursors; `lib/client/apiClient.mjs` owns request construction and safe response parsing.
+
+The marks-entry portal still lazily uses `/api/database` as a compatibility reader. Staff-session/authentication and write routes retain their contracts. New reads reauthorize staff/effective preview context and read only their prerequisite tabs fresh. They do not share response caches. Cohort inputs are complete, so existing shared result/ranking/grading functions and exports continue to calculate on the selected cohort, including ALL sections.
+
+See [Task 3.3 completion](task-3.3-completion.md) for contracts, measured synthetic payloads, verification, retained dependencies and deferred work. Task 3.2's coordinated/idempotent write protocol remains described in [write safety](task-3.2-write-safety.md).

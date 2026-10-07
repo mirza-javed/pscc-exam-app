@@ -1,3 +1,4 @@
+import { resourceReadHandler } from "@/lib/resourceReadHandler.mjs";
 import { submitMarks } from "@/lib/services/marksService.mjs";
 import { ServiceError } from "@/lib/services/serviceError.mjs";
 import { apiError, apiJson, unexpectedApiError } from "@/lib/apiErrors.mjs";
@@ -8,6 +9,8 @@ import { getAuthenticatedEmail, getCurrentStaff } from "@/lib/staffAuth";
 import { readJsonBody, RequestBodyError } from "@/lib/requestBody.mjs";
 
 export const dynamic = "force-dynamic";
+
+export const GET = resourceReadHandler("marks", "/api/marks");
 
 export async function POST(request) {
   const context = createRequestContext(request, "/api/marks");

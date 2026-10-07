@@ -12,6 +12,7 @@ import AnalyticsDashboard from "@/components/Analytics/AnalyticsDashboard";
 import CadetResultCards from "@/components/Reports/CadetResultCards";
 import useStaffSession from "@/hooks/useStaffSession";
 import useAcademicDatabase from "@/hooks/useAcademicDatabase";
+import useAcademicResource from "@/hooks/useAcademicResource";
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState("analytics"); // Default to analytics dashboard
@@ -34,18 +35,24 @@ export default function Home() {
   }, [theme]);
 
   const { checkingSession } = useStaffSession();
-  const { dbData, loading, refreshing, fetchDatabase } = useAcademicDatabase({
-    isLoggedIn,
+  const [revision, setRevision] = useState(0);
+  const config = useAcademicResource("config", { previewTeacherId }, isLoggedIn && !checkingSession, revision);
+  const { dbData, loading, error: databaseError, refreshing, fetchDatabase } = useAcademicDatabase({
+    isLoggedIn: isLoggedIn && activeTab === "marks",
     checkingSession,
     previewTeacherId,
     logout,
   });
 
-  const db = dbData?.data || {};
+  const db = config.payload?.data || {};
   const staffList = db.Staff_Directory || [];
+  const refreshResources = async () => {
+    setRevision((value) => value + 1);
+    if (activeTab === "marks") await fetchDatabase(true);
+  };
 
   // If initial loading screen
-  if (checkingSession || (isLoggedIn && loading && !dbData)) {
+  if (checkingSession || (isLoggedIn && config.loading && !config.payload)) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-950 space-y-4">
         <div className="w-12 h-12 rounded-2xl bg-blue-700 text-white flex items-center justify-center animate-bounce shadow-xl shadow-blue-900/30">
@@ -96,9 +103,9 @@ export default function Home() {
       {/* Top Navbar */}
       <Navbar
         staffList={staffList}
-        db={db}
-        onRefresh={() => fetchDatabase(true)}
-        refreshing={refreshing}
+        db={{ ...db, Teaching_Assignments: db.Preview_Assignments || db.Teaching_Assignments }}
+        onRefresh={refreshResources}
+        refreshing={refreshing || config.loading}
       />
 
       {/* Main Container */}
@@ -125,22 +132,29 @@ export default function Home() {
           ))}
         </div>
 
+        {config.error && <p role="alert" className="text-sm text-red-600">{config.error}</p>}
+        {activeTab === "marks" && databaseError && <p role="alert" className="text-sm text-red-600">{databaseError}</p>}
+        {activeTab === "marks" && loading && <p role="status" className="text-sm">Loading marks entry data...</p>}
         {/* Tab Content Display */}
         <div className="space-y-6">
           {activeTab === "analytics" ? (
             <AnalyticsDashboard
               db={db}
+              scoped
+              revision={revision}
               onNavigateToMarks={() => setActiveTab("marks")}
             />
-          ) : activeTab === "marks" ? (
+          ) : activeTab === "marks" && dbData && !loading ? (
             <MarksEntryPortal
-              db={db}
-              onMarksSaved={() => fetchDatabase(true)}
+              db={dbData.data}
+              onMarksSaved={refreshResources}
             />
           ) : activeTab === "reports" ? (
             <CadetResultCards
               db={db}
-              onPublicationSaved={() => fetchDatabase(true)}
+              scoped
+              revision={revision}
+              onPublicationSaved={refreshResources}
             />
           ) : null}
         </div>

@@ -8,6 +8,8 @@ export default function useAcademicDatabase({
   logout,
 }) {
   const [dbData, setDbData] = useState(null);
+  const [loadedContext, setLoadedContext] = useState(null);
+  const contextKey = JSON.stringify({ isLoggedIn, previewTeacherId });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -42,6 +44,7 @@ export default function useAcademicDatabase({
         );
       }
 
+      setLoadedContext(contextKey);
       setDbData(json);
     } catch (err) {
       if (sequence !== requestSequence.current) return;
@@ -56,6 +59,7 @@ export default function useAcademicDatabase({
   };
 
   useEffect(() => {
+    setDbData(null);
     if (isLoggedIn && !checkingSession) fetchDatabase();
     // Preserve fetch triggers while invalidating older response generations.
     return () => {
@@ -66,5 +70,5 @@ export default function useAcademicDatabase({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoggedIn, checkingSession, previewTeacherId]);
 
-  return { dbData, loading, error, refreshing, fetchDatabase };
+  return { dbData: loadedContext === contextKey ? dbData : null, loading, error, refreshing, fetchDatabase };
 }

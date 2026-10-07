@@ -1,9 +1,12 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
+import useAcademicCohort from "./useAcademicCohort";
+import useAcademicResource from "./useAcademicResource";
+import { useAuthStore } from "@/lib/store";
 import { buildClassAnalyticsData } from "@/lib/analytics";
 import { getAcademicSession } from "@/lib/examinationResults.mjs";
 
-export default function useCadetSelection(db) {
+export default function useCadetSelection(db, { scoped = false, revision = 0 } = {}) {
   // Result calculations are driven only by configured exam schemes.
   const examOptions = useMemo(() => {
     const es = db.exam_scheme || [];
@@ -25,6 +28,7 @@ export default function useCadetSelection(db) {
 
   // Available grades
   const availableGrades = useMemo(() => {
+    if (db.selectors) return Object.keys(db.selectors).sort((a, b) => Number(a) - Number(b));
     const allStudents = db.Students || [];
     const set = new Set();
     allStudents.forEach((s) => {
@@ -57,8 +61,17 @@ export default function useCadetSelection(db) {
   const [searchQuery, setSearchQuery] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
 
+  const previewTeacherId = useAuthStore((state) => state.previewUser?.user?.Teacher_ID || "");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 200);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+  const search = useAcademicResource("students", { search: debouncedSearch, limit: 10, previewTeacherId }, scoped && !!debouncedSearch);
+  const cohort = useAcademicCohort({ grade: selectedGrade, section: selectedSection, exam: selectedExam, session: selectedSession, scoped, revision });
+  const resultDb = useMemo(() => scoped ? cohort.payload?.data || {} : db, [scoped, cohort.payload, db]);
   // All students for global Kit No search
-  const allStudents = useMemo(() => db.Students || [], [db]);
+  const allStudents = useMemo(() => scoped ? search.payload?.items || [] : db.Students || [], [db, scoped, search.payload]);
 
   // Suggestions matching query across all enrolled students
   const filteredCadetSuggestions = useMemo(() => {
@@ -110,6 +123,7 @@ export default function useCadetSelection(db) {
 
   // Available sections for chosen grade
   const availableSections = useMemo(() => {
+    if (db.selectors) return db.selectors[selectedGrade] || [];
     const allStudents = db.Students || [];
     const set = new Set();
     allStudents
@@ -127,13 +141,13 @@ export default function useCadetSelection(db) {
   // Compute class analytics and merit list
   const analytics = useMemo(() => {
     return buildClassAnalyticsData(
-      db,
+      resultDb,
       selectedGrade,
       selectedSection,
       selectedExam,
       selectedSession,
     );
-  }, [db, selectedGrade, selectedSection, selectedExam, selectedSession]);
+  }, [resultDb, selectedGrade, selectedSection, selectedExam, selectedSession]);
 
   const {
     meritGrid,
@@ -146,6 +160,7 @@ export default function useCadetSelection(db) {
 
   // Sync selectedKitNo when meritGrid changes
   useEffect(() => {
+    if (scoped && cohort.loading) return;
     if (meritGrid && meritGrid.length > 0) {
       if (
         !selectedKitNo ||
@@ -156,7 +171,7 @@ export default function useCadetSelection(db) {
     } else {
       setSelectedKitNo("");
     }
-  }, [meritGrid, selectedKitNo]);
+  }, [meritGrid, selectedKitNo, scoped, cohort.loading]);
 
   // Selected Cadet Object
   const currentCadet = useMemo(() => {
@@ -186,6 +201,9 @@ export default function useCadetSelection(db) {
   };
 
   return {
+    resultDb,
+    loading: cohort.loading,
+    error: cohort.error || search.error,
     selectedGrade,
     setSelectedGrade,
     selectedSection,

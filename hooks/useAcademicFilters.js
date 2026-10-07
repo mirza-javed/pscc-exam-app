@@ -23,6 +23,7 @@ export default function useAcademicFilters(db) {
 
   // Available grades
   const availableGrades = useMemo(() => {
+    if (db.selectors) return Object.keys(db.selectors).sort((a, b) => Number(a) - Number(b));
     const allStudents = db.Students || [];
     const set = new Set();
     allStudents.forEach((s) => {
@@ -51,6 +52,7 @@ export default function useAcademicFilters(db) {
 
   // Available sections for chosen grade
   const availableSections = useMemo(() => {
+    if (db.selectors) return db.selectors[selectedGrade] || [];
     const allStudents = db.Students || [];
     const set = new Set();
     allStudents
