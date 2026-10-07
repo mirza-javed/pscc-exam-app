@@ -81,3 +81,10 @@ test("server log serialization redacts emails, bearer tokens, and private keys",
   assert.equal(serialized.message.includes("teacher@example.test"), false);
   assert.equal(serialized.message.includes("abc.def.ghi"), false);
 });
+
+
+test("write coordination secret is redacted from diagnostic errors", () => {
+  const serialized = serializeErrorForLog(new Error("WRITE_COORDINATION_SECRET=synthetic-private-secret"));
+  assert.doesNotMatch(serialized.message, /synthetic-private-secret/);
+  assert.match(serialized.message, /REDACTED/);
+});

@@ -46,7 +46,7 @@ test("session/preview is transient and preferences retain version-2 theme hydrat
   assert.equal(preferences.getState().theme, "light");
 });
 
-test("database hook preserves loading/error/401 and existing uncancelled response ordering", async () => {
+test("database hook preserves loading/error/401 and rejects older response generations", async () => {
   installBrowser();
   const { default: useAcademicDatabase } = await loadClient(
     "hooks/useAcademicDatabase.js",
@@ -90,7 +90,7 @@ test("database hook preserves loading/error/401 and existing uncancelled respons
       json: async () => ({ success: true, data: { marker: "older" } }),
     });
   });
-  assert.equal(state.dbData.data.marker, "older");
+  assert.equal(state.dbData.data.marker, "newer");
   let refresh;
   act(() => {
     refresh = state.fetchDatabase(true);
@@ -119,7 +119,7 @@ test("database hook preserves loading/error/401 and existing uncancelled respons
   }
   assert.equal(state.error, "Synthetic failure (Reference: ref)");
   assert.equal(state.refreshing, false);
-  assert.equal(state.dbData.data.marker, "older");
+  assert.equal(state.dbData.data.marker, "newer");
   act(() => {
     refresh = state.fetchDatabase(true);
   });

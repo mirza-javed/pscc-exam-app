@@ -12,6 +12,11 @@ import {
   writeMarksTemplate,
 } from "@/lib/client/marksWorkbook.mjs";
 import useMarksDraft from "./useMarksDraft";
+import { marksExpectedState } from "@/lib/writeState.mjs";
+import {
+  getSaveRequest,
+  finishSaveRequest,
+} from "@/lib/client/saveRequest.mjs";
 
 const STRICT_MARKS_PATTERN = /^\d+(?:\.\d+)?$/;
 
@@ -82,12 +87,13 @@ export default function useMarksEntry({ db, onMarksSaved, effectiveContext }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [showUploader, setShowUploader] = useState(false);
 
-  const { readDraft, persistDraft, clearDraft } = useMarksDraft({
-    selectedExam,
-    selectedGrade,
-    selectedSection,
-    selectedSubject,
-  });
+  const { readDraft, persistDraft, clearDraft, readBaseline, persistBaseline } =
+    useMarksDraft({
+      selectedExam,
+      selectedGrade,
+      selectedSection,
+      selectedSubject,
+    });
 
   // Marks state: Map of { [Kit_No]: "45" | "Absent" | "" }
   const [marksState, setMarksState] = useState({});
@@ -99,6 +105,8 @@ export default function useMarksEntry({ db, onMarksSaved, effectiveContext }) {
   const [uploadStatus, setUploadStatus] = useState(null);
 
   const inputRefs = useRef({});
+  const saveInFlight = useRef(false);
+  const baseline = useRef(null);
   const duplicateKitNos = useMemo(
     () =>
       new Set(
@@ -227,11 +235,22 @@ export default function useMarksEntry({ db, onMarksSaved, effectiveContext }) {
     });
 
     setExistingSubmissions(subMap);
+    baseline.current = marksExpectedState(db, {
+      examId: selectedExam,
+      subject: selectedSubject,
+      records: enrolledStudents.filter(
+        (std) => !isDuplicateKitNo(std.Kit_No || std.Student_ID),
+      ),
+    });
     const hasPriorMarks = Object.keys(subMap).length > 0;
     setIsEditMode(!hasPriorMarks);
 
     // 2. Check localStorage draft for unsaved work
-    if (readDraft(initialMap)) setIsEditMode(true);
+    if (readDraft(initialMap)) {
+      setIsEditMode(true);
+      // Old drafts have no concurrency baseline: require review rather than infer it.
+      baseline.current = readBaseline();
+    }
 
     setMarksState(initialMap);
     // Preserve the original hydration triggers; draft callback identity must not reset edits.
@@ -259,6 +278,13 @@ export default function useMarksEntry({ db, onMarksSaved, effectiveContext }) {
     });
 
     clearDraft();
+    baseline.current = marksExpectedState(db, {
+      examId: selectedExam,
+      subject: selectedSubject,
+      records: enrolledStudents.filter(
+        (std) => !isDuplicateKitNo(std.Kit_No || std.Student_ID),
+      ),
+    });
 
     setMarksState(initialMap);
     setIsEditMode(false);
@@ -273,7 +299,16 @@ export default function useMarksEntry({ db, onMarksSaved, effectiveContext }) {
   const updateScore = (kitNo, val) => {
     setMarksState((prev) => {
       const next = { ...prev, [kitNo]: val };
-      persistDraft(next);
+      try {
+        persistBaseline(baseline.current);
+        persistDraft(next);
+      } catch {
+        setToast({
+          type: "error",
+          message:
+            "Draft could not be stored safely. Keep this page open until your save is confirmed.",
+        });
+      }
       return next;
     });
   };
@@ -430,6 +465,7 @@ export default function useMarksEntry({ db, onMarksSaved, effectiveContext }) {
 
   // Save or update marks to Google Sheets via /api/marks
   const handleSaveMarks = async () => {
+    if (saveInFlight.current) return;
     if (isPreview) {
       setToast({
         type: "info",
@@ -484,21 +520,36 @@ export default function useMarksEntry({ db, onMarksSaved, effectiveContext }) {
       return;
     }
 
+    saveInFlight.current = true;
     setSaving(true);
+    const actor =
+      effectiveContext.realUser?.Teacher_ID ||
+      effectiveContext.user?.Teacher_ID ||
+      effectiveContext.realUser?.Email ||
+      "current";
+    const storageKey = `pscc_pending_marks_${actor}_${selectedExam}_${selectedGrade}_${selectedSection}_${selectedSubject}`;
     try {
+      const body = {
+        records,
+        examId: selectedExam,
+        grade: selectedGrade,
+        section: selectedSection,
+        subject: selectedSubject,
+      };
+      if (!baseline.current)
+        throw new Error(
+          "This older draft has no saved-state baseline. Cancel the draft, refresh, and review the marks before saving.",
+        );
+      body.expectedState = baseline.current;
+      const requestBody = getSaveRequest(storageKey, body);
       const res = await fetch("/api/marks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          records,
-          examId: selectedExam,
-          grade: selectedGrade,
-          section: selectedSection,
-          subject: selectedSubject,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       const data = await res.json();
+      finishSaveRequest(storageKey, data, res.status);
       if (!data.success) {
         const firstDetail = Array.isArray(data.details)
           ? data.details[0]
@@ -528,13 +579,14 @@ export default function useMarksEntry({ db, onMarksSaved, effectiveContext }) {
             : `Saved ${data.count} student marks for ${selectedSubject} to Google Sheets!`),
       });
 
-      if (onMarksSaved) onMarksSaved();
+      if (onMarksSaved) await onMarksSaved();
     } catch (err) {
       setToast({
         type: "error",
         message: err.message || "Failed to sync to database.",
       });
     } finally {
+      saveInFlight.current = false;
       setSaving(false);
     }
   };

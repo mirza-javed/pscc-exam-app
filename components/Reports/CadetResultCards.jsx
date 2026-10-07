@@ -80,6 +80,8 @@ export default function CadetResultCards({ db = {}, onPublicationSaved }) {
     selectedExam,
     setToastMessage,
     onPublicationSaved,
+    publicationEvents: db.Result_Publications || [],
+    actorId: effectiveContext.realUser?.Teacher_ID || effectiveContext.user?.Teacher_ID || "current",
   });
 
   return (

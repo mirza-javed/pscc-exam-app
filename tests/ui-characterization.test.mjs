@@ -13,6 +13,7 @@ import {
 } from "./helpers/uiHarness.mjs";
 import * as XLSX from "xlsx";
 import { createHash } from "node:crypto";
+import { marksExpectedState } from "../lib/writeState.mjs";
 
 // Captured from the committed pre-extraction portals with these synthetic fixtures.
 // Includes visible text, DOM structure, classes, photos and accessibility props.
@@ -129,6 +130,7 @@ test("marks preserve zero, absence, drafts, submission IDs and failed save recov
   initialView.unmount();
   const draftKey = "draft_E1_9_A_English";
   browser.values.set(draftKey, JSON.stringify({ 100: "55", 101: "0" }));
+  browser.values.set(`${draftKey}_baseline`, JSON.stringify(marksExpectedState(db, { examId: "E1", subject: "English", records: [{ Kit_No: "100" }, { Kit_No: "101" }] })));
   const view = render(Portal, { db });
   let inputs = view.root
     .findAllByType("input")

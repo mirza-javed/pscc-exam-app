@@ -105,7 +105,7 @@ test("successful marks persistence invalidates the same academic cache", async (
   assert.equal((await repo.loadMasterDatabase())._cached, true);
   await saveOrUpdateMarksLog([
     { Kit_No: "100", Exam_ID: "E1", Subject: "English", Marks_Obtained: "80" },
-  ]);
+  ], { sheets, spreadsheetId: "synthetic-workbook" });
   assert.equal((await repo.loadMasterDatabase())._cached, false);
 });
 

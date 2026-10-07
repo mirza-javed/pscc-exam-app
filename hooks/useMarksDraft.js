@@ -29,7 +29,20 @@ export default function useMarksDraft({
   const clearDraft = () => {
     try {
       localStorage.removeItem(draftKey);
+      localStorage.removeItem(`${draftKey}_baseline`);
     } catch (e) {}
   };
-  return { readDraft, persistDraft, clearDraft };
+  const baselineKey = `${draftKey}_baseline`;
+  const readBaseline = () => {
+    try {
+      return JSON.parse(localStorage.getItem(baselineKey) || "null");
+    } catch {
+      return null;
+    }
+  };
+  const persistBaseline = (baseline) => {
+    // If this fails, do not persist a draft whose original state is unknown.
+    localStorage.setItem(baselineKey, JSON.stringify(baseline));
+  };
+  return { readDraft, persistDraft, clearDraft, readBaseline, persistBaseline };
 }

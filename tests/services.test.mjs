@@ -18,6 +18,7 @@ function fixture(role = "Teacher") {
   };
   const calls = { reads: [], writes: [], refresh: [] };
   const dependencies = {
+    coordinateWrite: async ({ execute }) => execute(),
     loadFreshDatabaseTabs: async (tabs) => { calls.reads.push(tabs); return db; },
     loadMasterDatabase: async (refresh) => { calls.refresh.push(refresh); return { ...db, _cached: true, _cachedAt: 123 }; },
     saveOrUpdateMarksLog: async (records) => { calls.writes.push(records); return { updatedCount: 1, insertedCount: 0, totalCount: 1 }; },
@@ -35,7 +36,7 @@ test("academic service uses fresh protected data and current assignments, preser
   const result = await createAcademicDataService(f.dependencies)(f.current, new URLSearchParams("refresh=true"));
   assert.deepEqual(result.data.Students.map((row) => row.Kit_No), ["100"]);
   assert.deepEqual(f.calls.refresh, [false]);
-  assert.deepEqual(f.calls.reads, [["Students", "Marks_Log"]]);
+  assert.deepEqual(f.calls.reads, [["Students", "Marks_Log", "Result_Publications"]]);
   assert.equal(result.meta.cached, true);
   assert.equal(result.meta.cachedAt, 123);
   assert.equal(result.meta.counts.students, 1);

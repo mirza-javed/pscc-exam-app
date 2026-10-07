@@ -45,12 +45,13 @@ export async function POST(request) {
       return apiError({ requestId: context.requestId, status: error.status, error: error.message, code: error.code });
     }
 
-    const payload = await recordResultPublication(current, body);
-    return apiJson(payload, { requestId: context.requestId, headers: rateLimitHeaders(limit) });
+    const payload = await recordResultPublication(current, body, context);
+    return apiJson({ ...payload, requestId: context.requestId }, { requestId: context.requestId, headers: { "Cache-Control": "no-store", ...rateLimitHeaders(limit) } });
   } catch (error) {
     if (error instanceof ServiceError) {
       if (error.reason) logApiEvent("warn", "authorization_denied", context, { status: error.status, actorRef: limitActorRef, reason: error.reason });
-      return apiError({ requestId: context.requestId, status: error.status, error: error.message, code: error.code, details: error.details });
+      return apiError({ requestId: context.requestId, status: error.status, error: error.message, code: error.code, details: error.details,
+        headers: ["WRITE_BUSY", "WRITE_UNKNOWN_OUTCOME", "WRITE_COORDINATION_UNAVAILABLE"].includes(error.code) ? { "Retry-After": "2" } : {} });
     }
     if (error instanceof SheetWriteError && ["PUBLICATION_EVENT_CONFLICT", "INVALID_PUBLICATION_TRANSITION", "UNCHANGED_PUBLICATION"].includes(error.code)) {
       logApiEvent("warn", "result_publication_conflict", context, { status: 409, ...serializeErrorForLog(error) });

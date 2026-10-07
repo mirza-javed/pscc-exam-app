@@ -24,6 +24,7 @@ mockServerModule("lib/staffAuth.js", {
   getStaffAuthorization: (staff, db) => ({ staff, permissions: getStaffPermissions(staff, db), authorizationDb: db }),
 });
 mockServerModule("lib/repositories/academicRepository.js", {
+  invalidateAcademicCache: () => {},
   loadMasterDatabase: async () => state.db,
   loadFreshDatabaseTabs: async () => { state.reads++; if (state.readError) throw state.readError; return state.db; },
 });
@@ -36,6 +37,10 @@ mockServerModule("lib/repositories/resultPublicationRepository.js", {
 // Keep real policy/header/error helpers; only the adapter result is synthetic.
 const rateLimit = await import("../lib/rateLimit.mjs");
 mockServerModule("lib/rateLimit.mjs", { ...rateLimit, checkRateLimit: async () => state.limit });
+mockServerModule("lib/services/writeCoordinationService.mjs", {
+  coordinateWrite: async ({ execute }) => execute(),
+  assertExpectedState: () => {},
+});
 const database = await import("../app/api/database/route.js");
 const marks = await import("../app/api/marks/route.js");
 const publications = await import("../app/api/result-publications/route.js");
@@ -70,7 +75,7 @@ test("actual route successes preserve response shapes, rate headers and private 
     const payload = await check(response, 200);
     assert.equal(payload.success, true);
     assert.equal(state.approvals, 1);
-    if (path === "marks") assert.deepEqual(Object.keys(payload).sort(), ["count", "insertedCount", "message", "success", "updatedCount"]);
+    if (path === "marks") assert.deepEqual(Object.keys(payload).sort(), ["count", "insertedCount", "message", "requestId", "success", "updatedCount"]);
     if (path === "database") assert.deepEqual(Object.keys(payload).sort(), ["data", "meta", "success"]);
     if (path === "result-publications") assert.equal(payload.event.Result_Status, "Published");
   }
