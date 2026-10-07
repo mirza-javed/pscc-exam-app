@@ -66,8 +66,8 @@ test("individual All Exams workbook uses dynamic exams and professional formatti
   assert.deepEqual(rowValues(worksheet, 5, 6), [
     "Subject", "Monthly Test", "Term Exam", "Grand Total", "Overall %", "Overall Grade",
   ]);
-  assert.deepEqual(rowValues(worksheet, 6, 6), ["English", "40/50", "80/100", "120/150", "", ""]);
-  assert.deepEqual(rowValues(worksheet, 7, 6), ["Physics", "45/50", "N/A", "45/50", "", ""]);
+  assert.deepEqual(rowValues(worksheet, 6, 6), ["English", "40/50", "80/100", "120/150", 0.8, "B++"]);
+  assert.deepEqual(rowValues(worksheet, 7, 6), ["Physics", "45/50", "N/A", "45/50", 0.9, "A+"]);
   assert.deepEqual(rowValues(worksheet, 8, 6), [
     "Grand Total / Aggregate", "85/100", "80/100", "165/200", 0.825, "B++",
   ]);
@@ -197,7 +197,7 @@ test("generated All Exams workbooks match both supplied sample calculation speci
   assert.deepEqual(rowValues(individualSheet, 5, 7), [
     "Subject", "Monthly Test Aug 26", "1st Term Exam 2026", "Monthly Test Nov 26", "Grand Total", "Overall %", "Overall Grade",
   ]);
-  assert.deepEqual(rowValues(individualSheet, 6, 7), ["Biology", "8/9", "8/9", "8/9", "24/27", "", ""]);
+  assert.deepEqual(rowValues(individualSheet, 6, 7), ["Biology", "8/9", "8/9", "8/9", "24/27", 0.889, "A"]);
   assert.deepEqual(rowValues(individualSheet, 17, 7), [
     "Grand Total / Aggregate", "157/205", "157/205", "157/205", "471/615", 0.766, "B+",
   ]);

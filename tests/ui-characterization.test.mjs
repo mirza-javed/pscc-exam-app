@@ -16,9 +16,10 @@ import { createHash } from "node:crypto";
 
 // Captured from the committed pre-extraction portals with these synthetic fixtures.
 // Includes visible text, DOM structure, classes, photos and accessibility props.
+// Reports baseline updated for subject percentages/grades and compact print styling.
 const baselineDigests = {
   analytics: "f82a9d328a39f054d7e9176dada06387a73a362ebb4d4969c50f9292f16e212d",
-  reports: "a12d3391764e173fd4004b886baae76a81eb925bbd0741edc63f94b6a18b1012",
+  reports: "5d470ce8958cd5f7a68cdcbc3585ef45ff4f8edaab59523c52fde987d6cf0a4c",
   marks: "30fcf5d1d6068c8292d05828efe29805bab42cfb21aeab59328fa0d5932a131f",
 };
 function assertBaseline(view, feature) {
