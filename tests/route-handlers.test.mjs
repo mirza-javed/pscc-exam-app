@@ -49,18 +49,22 @@ const publicationBody = { grade: "9", section: "A", examId: "E1", kitNo: "100", 
 const cases = [[database.GET, "database", null], [marks.POST, "marks", marksBody], [publications.POST, "result-publications", publicationBody]];
 function request(path, body, origin = "http://localhost:3000") {
   return new Request(`http://localhost:3000/api/${path}`, {
-    method: body === null ? "GET" : "POST",
+    method: (state.requestMethod = body === null ? "GET" : "POST"),
     headers: { "x-request-id": "synthetic-request-123", Origin: origin, "Content-Type": "application/json" },
     ...(body === null ? {} : { body: typeof body === "string" ? body : JSON.stringify(body) }),
   });
 }
 async function check(response, status, code) {
   assert.equal(response.status, status);
-  assert.equal(response.headers.get("X-Request-ID"), "synthetic-request-123");
+  const requestId = response.headers.get("X-Request-ID");
+  if (state.requestMethod === "POST") {
+    assert.match(requestId, /^[0-9a-f-]{36}$/);
+    assert.notEqual(requestId, "synthetic-request-123");
+  } else assert.equal(requestId, "synthetic-request-123");
   const payload = await response.json();
   if (code) {
     assert.equal(payload.code, code);
-    assert.equal(payload.requestId, "synthetic-request-123");
+    assert.equal(payload.requestId, requestId);
     assert.equal(payload.success, false);
   }
   return payload;

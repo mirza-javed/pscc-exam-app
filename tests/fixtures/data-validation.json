@@ -50,6 +50,7 @@
         "Prior_Event_ID",
         "Revision_Reason"
       ]
-    ]
+    ],
+    "Audit_Log": [["Audit_ID", "Timestamp", "Request_ID", "Save_ID", "Submission_ID", "Actor_ID", "Actor_Role", "Action_Type", "Resource_Type", "Resource_Key", "Exam_ID", "Grade", "Section", "Subject", "Kit_No", "Before_Value", "After_Value", "Outcome", "Reason", "Source", "Metadata_Version"]]
   }
 }

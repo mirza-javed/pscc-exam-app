@@ -1,3 +1,4 @@
+import { AUDIT_HEADERS } from "../../lib/domain/auditEvents.mjs";
 import { WRITE_RECEIPT_HEADERS } from "../../lib/repositories/writeReceiptRepository.js";
 import { RESULT_PUBLICATION_HEADERS } from "../../lib/repositories/resultPublicationRepository.js";
 import { MARKS_HEADERS } from "../../lib/schemas/sheetsSchema.mjs";
@@ -64,8 +65,9 @@ export function writeFixture() {
     Marks_Log: [MARKS_HEADERS],
     Result_Publications: [RESULT_PUBLICATION_HEADERS],
     Write_Receipts: [WRITE_RECEIPT_HEADERS],
+    Audit_Log: [AUDIT_HEADERS],
   };
-  const ids = { Marks_Log: 1, Result_Publications: 2, Write_Receipts: 3 };
+  const ids = { Marks_Log: 1, Result_Publications: 2, Write_Receipts: 3, Audit_Log: 4 };
   const base = {
     Students: [
       { Kit_No: "100", Grade: "9", Section: "A" },

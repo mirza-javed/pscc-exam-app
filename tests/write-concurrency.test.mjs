@@ -11,6 +11,8 @@ const { validateWriteEnvelope } = await import(
   "../lib/services/writeCoordinationService.mjs"
 );
 const { marksExpectedState } = await import("../lib/writeState.mjs");
+// Separate failure-attempt batches do not mutate examination rows.
+const academicBatches = (f) => f.batches.filter(({ request }) => request.requestBody.requests.some((entry) => entry.appendCells?.sheetId === 3 && entry.appendCells.rows[0].values[1].userEnteredValue.stringValue !== "audit_attempt"));
 const code = (expected) => (error) => error.code === expected;
 
 test("identical and normalized marks replay has one effect and stable receipt", async () => {
@@ -29,7 +31,7 @@ test("identical and normalized marks replay has one effect and stable receipt", 
   assert.equal(second.insertedCount, first.insertedCount);
   assert.equal(f.tables.Marks_Log.length, 2);
   assert.equal(f.tables.Write_Receipts.length, 2);
-  assert.equal(f.batches.length, 1);
+  assert.equal(academicBatches(f).length, 1);
   assert.equal(f.batches[0].options.retry, false);
   assert.equal(f.batches[0].options.retryConfig.retry, 0);
   assert.ok(f.invalidations >= 2);
@@ -61,7 +63,7 @@ test("save-ID payload reuse and actor reuse are rejected before another write", 
     },
   };
   await assert.rejects(service(another, body), code("WRITE_OWNER_CONFLICT"));
-  assert.equal(f.batches.length, 1);
+  assert.equal(academicBatches(f).length, 1);
   assert.equal(f.db().Marks_Log[0].Marks_Obtained, "80");
 });
 
@@ -87,7 +89,7 @@ test("persistent Submission_ID supports deliberate edits but retains row-target 
     service(f.current, unknown),
     code("MARKS_SCOPE_FORBIDDEN"),
   );
-  assert.equal(f.batches.length, 2);
+  assert.equal(academicBatches(f).length, 2);
 });
 
 test("simultaneous identical requests from separate service instances append once", async () => {
@@ -101,7 +103,7 @@ test("simultaneous identical requests from separate service instances append onc
     "ALREADY_PROCESSED",
     "SAVED",
   ]);
-  assert.equal(f.batches.length, 1);
+  assert.equal(academicBatches(f).length, 1);
   assert.equal(f.tables.Marks_Log.length, 2);
 });
 
@@ -121,7 +123,7 @@ test("concurrent distinct saves to same target reject stale state without silent
     results.find((result) => result.status === "rejected").reason.code,
     "WRITE_STATE_CONFLICT",
   );
-  assert.equal(f.batches.length, 1);
+  assert.equal(academicBatches(f).length, 1);
   assert.equal(f.tables.Marks_Log.length, 2);
 });
 
@@ -144,7 +146,7 @@ test("old committed save cannot overwrite a later edit when retried", async () =
   const replay = await service(f.current, old);
   assert.equal(replay.status, "ALREADY_PROCESSED");
   assert.equal(f.db().Marks_Log[0].Marks_Obtained, "90");
-  assert.equal(f.batches.length, 2);
+  assert.equal(academicBatches(f).length, 2);
 });
 
 test("malformed save IDs and missing expected state cannot dispatch", async () => {
@@ -165,7 +167,7 @@ test("malformed save IDs and missing expected state cannot dispatch", async () =
     f.marksService()(f.current, body),
     code("WRITE_REQUEST_INVALID"),
   );
-  assert.equal(f.batches.length, 0);
+  assert.equal(academicBatches(f).length, 0);
 });
 
 test("failed validation and prerequisite reads produce zero mutations", async () => {
@@ -180,7 +182,7 @@ test("failed validation and prerequisite reads produce zero mutations", async ()
     f.marksService()(f.current, f.marks()),
     /Synthetic read failed/,
   );
-  assert.equal(f.batches.length, 0);
+  assert.equal(academicBatches(f).length, 0);
   assert.equal(f.adapter.intents.size, 0);
 });
 
@@ -195,7 +197,7 @@ test("Redis configuration, readiness and acquisition failures fail closed", asyn
       f.marksService()(f.current, f.marks()),
       code("WRITE_COORDINATION_UNAVAILABLE"),
     );
-    assert.equal(f.batches.length, 0);
+    assert.equal(academicBatches(f).length, 0);
   }
   const f = writeFixture();
   f.adapter.initialized = false;
@@ -217,7 +219,7 @@ test("lock acquisition is bounded and logs timeout without writing", async () =>
     code("WRITE_BUSY"),
   );
   assert.equal(attempts, 4);
-  assert.equal(f.batches.length, 0);
+  assert.equal(academicBatches(f).length, 0);
   assert.ok(f.logs.some((entry) => entry.event === "write.lock_timeout"));
 });
 
@@ -237,7 +239,7 @@ test("lease expiry before dispatch produces no Sheets write", async () => {
     }),
     code("WRITE_BUSY"),
   );
-  assert.equal(f.batches.length, 0);
+  assert.equal(academicBatches(f).length, 0);
   assert.equal(f.adapter.intents.size, 0);
 });
 
@@ -263,7 +265,7 @@ test("late in-flight batch after expired lease cannot overlap another writer", a
     f.marksService()(f.current, f.marks("200", 90)),
     code("WRITE_UNKNOWN_OUTCOME"),
   );
-  assert.equal(f.batches.length, 1);
+  assert.equal(academicBatches(f).length, 1);
   resume();
   await first;
   f.beforeBatch = null;
@@ -288,7 +290,7 @@ test("definitive Sheets rejection clears pending state and keeps atomic failure"
   const body = f.marks();
   await assert.rejects(
     f.marksService()(f.current, body),
-    code("WRITE_REJECTED"),
+    (error) => error.code === "AUDIT_PERSISTENCE_FAILED" && error.details[0].code === "WRITE_REJECTED",
   );
   assert.equal(f.tables.Marks_Log.length, 1);
   assert.equal(f.tables.Write_Receipts.length, 1);
@@ -315,7 +317,7 @@ test("uncertain write failure retains guard and never blindly retries", async ()
     f.marksService()(f.current, f.marks("200", 90)),
     code("WRITE_UNKNOWN_OUTCOME"),
   );
-  assert.equal(f.batches.length, 1);
+  assert.equal(academicBatches(f).length, 1);
   assert.equal(f.adapter.intents.size, 1);
 });
 
@@ -326,7 +328,7 @@ test("timeout after successful upstream commit recovers from atomic receipt", as
   const result = await f.marksService()(f.current, body);
   assert.equal(result.status, "ALREADY_PROCESSED");
   await f.marksService()(f.current, body);
-  assert.equal(f.batches.length, 1);
+  assert.equal(academicBatches(f).length, 1);
   assert.equal(f.tables.Marks_Log.length, 2);
   assert.equal(f.tables.Write_Receipts.length, 2);
 });
@@ -343,7 +345,7 @@ test("lost Redis dispatch response registers intent but sends no mutation", asyn
     f.marksService()(f.current, body),
     code("WRITE_COORDINATION_UNAVAILABLE"),
   );
-  assert.equal(f.batches.length, 0);
+  assert.equal(academicBatches(f).length, 0);
   assert.equal(f.adapter.intents.size, 1);
   f.adapter.dispatch = dispatch;
   await assert.rejects(
@@ -374,7 +376,7 @@ test("receipt read failure fails closed and duplicate receipts require review", 
     f.marksService({ coordinateWrite: coordinator })(f.current, f.marks()),
     code("WRITE_COORDINATION_UNAVAILABLE"),
   );
-  assert.equal(f.batches.length, 0);
+  assert.equal(academicBatches(f).length, 0);
   const body = f.marks();
   await f.marksService()(f.current, body);
   f.tables.Write_Receipts.push([...f.tables.Write_Receipts[1]]);
@@ -382,7 +384,7 @@ test("receipt read failure fails closed and duplicate receipts require review", 
     f.marksService()(f.current, body),
     code("WRITE_RECEIPT_INVALID"),
   );
-  assert.equal(f.batches.length, 1);
+  assert.equal(academicBatches(f).length, 1);
 });
 
 test("manual mark edit detected before planning rejects stale save", async () => {
@@ -394,7 +396,7 @@ test("manual mark edit detected before planning rejects stale save", async () =>
     f.marksService()(f.current, body),
     code("WRITE_STATE_CONFLICT"),
   );
-  assert.equal(f.batches.length, 1);
+  assert.equal(academicBatches(f).length, 1);
 });
 
 test("publication retry and concurrent same-ID publish append one event", async () => {
@@ -410,7 +412,7 @@ test("publication retry and concurrent same-ID publish append one event", async 
     "SAVED",
   ]);
   assert.equal(f.tables.Result_Publications.length, 2);
-  assert.equal(f.batches.length, 2);
+  assert.equal(academicBatches(f).length, 2);
   assert.equal(results[0].event.Recorded_By, "T1");
 });
 
@@ -497,7 +499,7 @@ test("replay rechecks current teaching authorization", async () => {
     f.marksService()(revoked, body),
     code("MARKS_SCOPE_FORBIDDEN"),
   );
-  assert.equal(f.batches.length, 1);
+  assert.equal(academicBatches(f).length, 1);
 });
 
 test("Redis adapter uses NX/PX acquisition and owner-checked Lua without mutation retries", async () => {
@@ -568,7 +570,7 @@ test("lost Sheets reply plus failed reconciliation stays unknown until receipt b
   f.mode = "success";
   const receipt = await f.marksService()(f.current, body);
   assert.equal(receipt.status, "ALREADY_PROCESSED");
-  assert.equal(f.batches.length, 1);
+  assert.equal(academicBatches(f).length, 1);
 });
 
 test("unresolved save-ID reuse checks actor and payload without redispatch", async () => {
@@ -595,7 +597,7 @@ test("unresolved save-ID reuse checks actor and payload without redispatch", asy
     f.marksService()(other, body),
     code("WRITE_OWNER_CONFLICT"),
   );
-  assert.equal(f.batches.length, 1);
+  assert.equal(academicBatches(f).length, 1);
 });
 
 test("committed pending guard can be reconciled before a different logical save", async () => {
@@ -631,7 +633,7 @@ test("lost renewal response prevents dispatch after a slow prerequisite", async 
     }),
     code("WRITE_BUSY"),
   );
-  assert.equal(f.batches.length, 0);
+  assert.equal(academicBatches(f).length, 0);
   assert.equal(f.adapter.intents.size, 0);
 });
 
@@ -651,7 +653,7 @@ test("maximum ownership budget stops dispatch independently of renewable lease",
     }),
     code("WRITE_BUSY"),
   );
-  assert.equal(f.batches.length, 0);
+  assert.equal(academicBatches(f).length, 0);
 });
 
 test("publication cannot treat a historical matching fingerprint as the latest revision", async () => {
@@ -714,12 +716,13 @@ test("mixed update/append rejection preserves prior marks and creates no partial
   f.mode = "reject";
   await assert.rejects(
     f.marksService()(f.current, body),
-    code("WRITE_REJECTED"),
+    (error) => error.code === "AUDIT_PERSISTENCE_FAILED" && error.details[0].code === "WRITE_REJECTED",
   );
   assert.equal(f.tables.Marks_Log.length, 2);
   assert.equal(f.db().Marks_Log[0].Marks_Obtained, "80");
   assert.equal(f.tables.Write_Receipts.length, 2);
   const requests = f.batches[1].request.requestBody.requests;
   assert.ok(requests.some((request) => request.updateCells));
-  assert.equal(requests.filter((request) => request.appendCells).length, 2);
+  assert.equal(requests.filter((request) => request.appendCells).length, 3);
+  assert.equal(requests.filter((request) => request.appendCells?.sheetId === 4).length, 1);
 });

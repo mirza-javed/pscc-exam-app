@@ -83,3 +83,7 @@ Tab-wide value ranges replace A1:ZZ, A:E, and A:O column truncation. There was n
 3. Resolve errors and legacy warnings with the examination/data owner. Historical staff/roster differences need contextual review, not automatic deletion.
 4. Agree separately on every data correction, backup, and rollback procedure. This task provides no cleanup or migration command.
 5. Re-run the read-only scan on the reconciled staging copy, then locally verify affected workflows/exports. Production corrections require separate authorization.
+
+## Task 3.4 audit storage
+
+Audit_Log is the dedicated append-only history in the same workbook. Its 21 required headers, normalization, actions, authorization, atomic-write contract, failure semantics and separately gated provisioning are documented in [audit-history.md](audit-history.md). Save_ID uses the existing logical-save context; Submission_ID retains its marks-row meaning. Audit history is excluded from ordinary database/scoped reads. The complete read-only validator includes this tab and treats missing/invalid audit storage as an error.

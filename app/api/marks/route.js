@@ -43,6 +43,7 @@ export async function POST(request) {
       body = await readJsonBody(request);
     } catch (error) {
       if (!(error instanceof RequestBodyError)) throw error;
+      logApiEvent("warn", "mutation.body_rejected", context, { status: error.status, code: error.code });
       return apiError({ requestId: context.requestId, status: error.status, error: error.message, code: error.code });
     }
 
@@ -50,6 +51,7 @@ export async function POST(request) {
     return apiJson({ ...payload, requestId: context.requestId }, { requestId: context.requestId, headers: { "Cache-Control": "no-store", ...rateLimitHeaders(limit) } });
   } catch (error) {
     if (error instanceof ServiceError) {
+      logApiEvent("warn", "marks.write_rejected", context, { status: error.status, code: error.code });
       if (error.reason) logApiEvent("warn", "authorization_denied", context, { status: error.status, actorRef: limitActorRef, reason: error.reason });
       return apiError({ requestId: context.requestId, status: error.status, error: error.message, code: error.code, details: error.details,
         headers: ["WRITE_BUSY", "WRITE_UNKNOWN_OUTCOME", "WRITE_COORDINATION_UNAVAILABLE"].includes(error.code) ? { "Retry-After": "2" } : {} });

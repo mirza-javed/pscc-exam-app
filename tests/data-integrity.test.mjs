@@ -166,7 +166,7 @@ test("valid synthetic snapshot is immutable and report omits private payloads", 
   const before = JSON.stringify(snapshot);
   const report = validateDataSnapshot(snapshot);
   assert.equal(report.valid, true);
-  assert.equal(report.summary.sheetsChecked, 9);
+  assert.equal(report.summary.sheetsChecked, 10);
   assert.equal(report.summary.recordsExamined, 7);
   assert.equal(JSON.stringify(snapshot), before);
   assert.doesNotMatch(
